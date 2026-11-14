@@ -34,7 +34,7 @@ export const SUNDAY_EVERY_WEEKS_DEFAULT = 3;
 /** Mulheres: um domingo de folga a cada 2 semanas (CLT art. 386). */
 export const SUNDAY_EVERY_WEEKS_WOMAN = 2;
 
-export const LEGAL_SOURCE_URL = 'https://www.planalto.gov.br/ccivil_03/constituicao/emendas/emc/';
+export const LEGAL_SOURCE_URL = 'https://www.planalto.gov.br/ccivil_03/constituicao/emendas/emc/emc141.htm';
 
 export function defaultRegime(today: Date = new Date()): Regime {
   // Data local (não UTC), para a virada acontecer à meia-noite no fuso de quem usa.
