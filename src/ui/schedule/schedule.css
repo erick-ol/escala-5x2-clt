@@ -127,6 +127,10 @@
 }
 .alert-counter .alert-counter-icon { background: var(--alert); color: #fff; font-size: 14px; }
 .alert-counter.is-zero .alert-counter-icon { background: var(--ok); color: #fff; }
+.alert-counter.is-warning { background: var(--gap-soft); border-color: transparent; color: var(--ink); }
+.alert-counter.is-warning:hover { background: #f7dcc6; }
+.alert-counter.is-warning .alert-counter-icon { background: var(--gap); color: #fff; font-size: 12px; }
+.alert-icon.is-warning { background: var(--gap); }
 .alert-counter-hint { font: 500 12px/1.2 var(--font-sans); color: var(--ink-2); }
 
 .sv-error {

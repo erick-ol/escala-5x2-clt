@@ -9,7 +9,7 @@ import { WEEKDAY_NAMES, type ISODate } from '../../domain/types';
 import { appStore, useAppStore } from '../../state/store';
 import { monthWeekDerived, useMonthProjection } from '../../state/useDerived';
 import { flexFor } from '../flex';
-import { AlertCounter, AlertList } from './AlertCounter';
+import { AlertCounter, AlertList, WarningLine } from './AlertCounter';
 import { CellEditor } from './CellEditor';
 import { DayTimeline } from './DayTimeline';
 import { GapSheet } from './GapSheet';
@@ -63,6 +63,7 @@ export function MonthView({ year, month, onChangeMonth, switcher }: MonthViewPro
   const [dayView, setDayView] = useState<Slot | null>(null);
   const [openGap, setOpenGap] = useState<{ week: number; key: string } | null>(null);
   const [alertList, setAlertList] = useState<'all' | { employeeId: string; week: number } | null>(null);
+  const [warningsOpen, setWarningsOpen] = useState(false);
   const [highlight, setHighlight] = useState<{ week: number; h: Highlight } | null>(null);
   const [editingStart, setEditingStart] = useState(false);
   const startInputId = useId();
@@ -185,6 +186,7 @@ export function MonthView({ year, month, onChangeMonth, switcher }: MonthViewPro
           )}
         </section>
         <AlertCounter count={projection.alerts.length} onOpen={() => setAlertList('all')} />
+        <WarningLine count={projection.warnings.length} onOpen={() => setWarningsOpen(true)} />
       </div>
 
       {day ? (
@@ -303,6 +305,7 @@ export function MonthView({ year, month, onChangeMonth, switcher }: MonthViewPro
           day={weeks[editing.week].firstDay + editing.c}
           date={dateOf(editing)}
           alerts={derived[editing.week].reports[editing.employeeId]?.alerts ?? []}
+          warnings={derived[editing.week].reports[editing.employeeId]?.warnings ?? []}
           plannedBreakStart={derived[editing.week].lunchPlan[editing.employeeId]?.[weeks[editing.week].firstDay + editing.c] ?? null}
           coveringRole={(() => {
             const f = flexFor(derived[editing.week].coverage, editing.employeeId, weeks[editing.week].firstDay + editing.c);
@@ -337,6 +340,21 @@ export function MonthView({ year, month, onChangeMonth, switcher }: MonthViewPro
             note: 'Quem cobre uma vaga se marca na visão Ciclo e vale para este dia em todas as repetições do ciclo. Para mudar só esta data, toque nas células e ajuste a escala da data.',
           }}
           onClose={() => setOpenGap(null)}
+        />
+      )}
+
+      {warningsOpen && (
+        <AlertList
+          warning
+          title={plural(projection.warnings.length, 'aviso no mês', 'avisos no mês')}
+          alerts={projection.warnings}
+          employees={doc.employees}
+          where={monthAlertWhere}
+          onSelect={(a) => {
+            setWarningsOpen(false);
+            selectAlert(a);
+          }}
+          onClose={() => setWarningsOpen(false)}
         />
       )}
 

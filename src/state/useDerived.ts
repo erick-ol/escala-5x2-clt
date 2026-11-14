@@ -15,6 +15,8 @@ export interface Derived {
   reports: Record<string, EmployeeReport>;
   /** Todos os alertas legais, na ordem da equipe. */
   alerts: LegalAlert[];
+  /** Avisos de descanso (11h entre jornadas, 35h semanais): não são alertas legais. */
+  warnings: LegalAlert[];
   /** Sugestões por item do resumo, chave `${roleId}|${shiftId}`. */
   suggestions: Map<string, Suggestion[]>;
   /** Início do almoço de cada pessoa em cada dia (explícito ou planejado pelo site); null quando não trabalha. */
@@ -47,6 +49,7 @@ export function deriveAll(doc: AppDocument, schedule: Schedule): Derived {
   const rulesInput = { config, employees, schedule, extraShifts: coverage.extraShifts, lunchPlan };
   const reports = evaluateRules(rulesInput);
   const alerts = employees.flatMap((e) => reports[e.id]?.alerts ?? []);
+  const warnings = employees.flatMap((e) => reports[e.id]?.warnings ?? []);
   const suggestions = suggestAll({ config, employees, schedule }, coverage.summary);
   const presenceCache = new Map<DayIndex, PresenceBlock[]>();
   const presence = (day: DayIndex) => {
@@ -57,7 +60,7 @@ export function deriveAll(doc: AppDocument, schedule: Schedule): Derived {
     }
     return blocks;
   };
-  return { coverage, reports, alerts, suggestions, lunchPlan, lunchGaps, coveredLunchGaps, orphanLunchMarks, presence };
+  return { coverage, reports, alerts, warnings, suggestions, lunchPlan, lunchGaps, coveredLunchGaps, orphanLunchMarks, presence };
 }
 
 /** Uma marcação de almoço vale para o buraco com o mesmo dia, função e intervalo. */
@@ -172,14 +175,16 @@ export function monthWeekDerived(month: MonthProjection, index: number): Derived
   for (const [id, r] of Object.entries(month.reports)) {
     const weeklyMinutes = Array.from({ length: WEEKS }, () => 0);
     weeklyMinutes[week.cycleWeek] = r.weeklyMinutes[index] ?? 0;
-    reports[id] = { employeeId: id, weeklyMinutes, alerts: weekAlertsAsCycle(week, r.alerts) };
+    reports[id] = { employeeId: id, weeklyMinutes, alerts: weekAlertsAsCycle(week, r.alerts), warnings: weekAlertsAsCycle(week, r.warnings) };
   }
   const alerts = Object.values(reports).flatMap((r) => r.alerts);
+  const warnings = Object.values(reports).flatMap((r) => r.warnings);
   const presenceCache = new Map<DayIndex, PresenceBlock[]>();
   return {
     coverage: week.coverage,
     reports,
     alerts,
+    warnings,
     suggestions: new Map(),
     lunchPlan: week.lunchPlan,
     lunchGaps: week.lunchGaps,

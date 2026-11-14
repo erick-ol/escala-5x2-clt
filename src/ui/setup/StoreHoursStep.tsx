@@ -2,7 +2,6 @@ import { WEEKDAY_NAMES, WEEK_ORDER, type StoreDay, type Weekday } from '../../do
 import { useAppStore } from '../../state/store';
 import { OffPatternPicker } from './OffPatternPicker';
 import { RegimePicker } from './RegimePicker';
-import { RestPicker } from './RestPicker';
 import { TimeInput } from './TimeInput';
 
 /** Índice de segunda-feira em `config.days`. */
@@ -41,7 +40,6 @@ export function StoreHoursStep() {
         <p className="hint">40h já cumpre a lei; 42h é o limite da transição (até 15/12/2027).</p>
         <OffPatternPicker />
         <p className="hint">Nunca mais de 2 folgas seguidas nem mais de 6 dias seguidos de trabalho.</p>
-        <RestPicker />
       </section>
 
       <div className="field">

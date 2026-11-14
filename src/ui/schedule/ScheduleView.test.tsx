@@ -184,6 +184,22 @@ describe('ScheduleView', () => {
     expect(within(sheet).getByRole('button', { name: 'Desfazer' })).toBeDisabled();
   });
 
+  test('descanso menor que 11h vira aviso de descanso, não alerta legal', async () => {
+    seed((_, s) => {
+      const row = s.lucas;
+      const d = [...Array(6).keys()].find((x) => row[x].status === 'work' && row[x + 1].status === 'work')!;
+      row[d] = { status: 'work', hours: { start: 13 * 60, end: 22 * 60, breakMinutes: 60 } };
+      row[d + 1] = { status: 'work', hours: { start: 6 * 60, end: 14 * 60, breakMinutes: 60 } };
+    });
+    const { user } = renderView();
+    expect(screen.queryByRole('button', { name: /alertas? lega/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /^1 aviso de descanso/ }));
+    const sheet = screen.getByRole('dialog', { name: /aviso no ciclo/ });
+    expect(sheet).toHaveTextContent('Avisos de descanso');
+    expect(sheet).toHaveTextContent('Descanso de 8h entre jornadas (mínimo 11h)');
+    expect(sheet).toHaveTextContent('A CLT pede 11h de descanso');
+  });
+
   test('o painel fecha com Esc e devolve o foco à célula', async () => {
     seed();
     const { user } = renderView();

@@ -9,7 +9,7 @@ import { DayTimeline } from './DayTimeline';
 import { useAppStore } from '../../state/store';
 import { alertWeek, alertsInWeek, runGenerate, useDerived } from '../../state/useDerived';
 import { ConfirmDialog } from '../ConfirmDialog';
-import { AlertCounter, AlertList } from './AlertCounter';
+import { AlertCounter, AlertList, WarningLine } from './AlertCounter';
 import { CellEditor } from './CellEditor';
 import { CoverageSummary } from './CoverageSummary';
 import { GapSheet } from './GapSheet';
@@ -45,6 +45,7 @@ export function ScheduleView({ onExport, initialError = null }: ScheduleViewProp
   const [editing, setEditing] = useState<{ employeeId: string; day: number } | null>(null);
   const [openGap, setOpenGap] = useState<string | null>(null);
   const [alertFilter, setAlertFilter] = useState<AlertFilter | null>(null);
+  const [warningsOpen, setWarningsOpen] = useState(false);
   const [highlight, setHighlight] = useState<Highlight | null>(null);
   const [confirmRegen, setConfirmRegen] = useState(false);
   /** Dia aberto na visão do dia; null = visão da semana. */
@@ -78,7 +79,7 @@ export function ScheduleView({ onExport, initialError = null }: ScheduleViewProp
     );
   }
 
-  const { coverage, alerts, reports, lunchGaps } = derived;
+  const { coverage, alerts, warnings, reports, lunchGaps } = derived;
 
   const hasManualChanges = () => {
     if (doc.marks.length > 0 || doc.calendar.dateOverrides.length > 0) return true;
@@ -192,6 +193,7 @@ export function ScheduleView({ onExport, initialError = null }: ScheduleViewProp
               }
             />
             <AlertCounter count={alerts.length} onOpen={() => setAlertFilter('all')} />
+            <WarningLine count={warnings.length} onOpen={() => setWarningsOpen(true)} />
           </div>
         </>
       )}
@@ -297,6 +299,7 @@ export function ScheduleView({ onExport, initialError = null }: ScheduleViewProp
           employeeId={editing.employeeId}
           day={editing.day}
           alerts={reports[editing.employeeId]?.alerts ?? []}
+          warnings={reports[editing.employeeId]?.warnings ?? []}
           plannedBreakStart={derived.lunchPlan[editing.employeeId]?.[editing.day] ?? null}
           coveringRole={(() => {
             const f = flexFor(coverage, editing.employeeId, editing.day);
@@ -307,6 +310,20 @@ export function ScheduleView({ onExport, initialError = null }: ScheduleViewProp
       )}
 
       {gapEntry && <GapSheet gap={gapEntry.gap} mark={gapEntry.mark} onClose={() => setOpenGap(null)} />}
+
+      {warningsOpen && (
+        <AlertList
+          warning
+          title={plural(warnings.length, 'aviso no ciclo', 'avisos no ciclo')}
+          alerts={warnings}
+          employees={doc.employees}
+          onSelect={(a) => {
+            setWarningsOpen(false);
+            selectAlert(a);
+          }}
+          onClose={() => setWarningsOpen(false)}
+        />
+      )}
 
       {alertFilter !== null && (
         <AlertList

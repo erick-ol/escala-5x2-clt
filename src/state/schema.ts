@@ -35,7 +35,6 @@ const config = z.object({
   minimums: z.array(minimum),
   regime: z.enum(['42h', '40h']),
   offPattern: z.enum(['together', 'flexible']).default('together'),
-  ignoreRest11h: z.boolean().optional(),
   /** Ausente em documentos e backups antigos: 11:30. */
   lunchFrom: minutes.default(DEFAULT_LUNCH_FROM),
 });

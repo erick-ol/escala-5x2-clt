@@ -51,6 +51,11 @@ export interface EmployeeReport {
   /** Minutos trabalhados em cada semana do ciclo (3 entradas). */
   weeklyMinutes: number[];
   alerts: LegalAlert[];
+  /**
+   * Avisos (não contam como alerta legal): descanso de 11h entre jornadas e descanso semanal de 35h
+   * (24h + 11h). O gerador não os evita; a escala mostra à parte.
+   */
+  warnings: LegalAlert[];
 }
 
 export interface RulesInput {
@@ -229,7 +234,7 @@ export function evaluateEmployee(input: RulesInput, employeeId: string, options:
   const days = input.days ?? CYCLE_DAYS;
   const weeks = Math.ceil(days / DAYS_PER_WEEK);
   const employee = input.employees.find((e) => e.id === employeeId);
-  const report: EmployeeReport = { employeeId, weeklyMinutes: Array.from({ length: weeks }, () => 0), alerts: [] };
+  const report: EmployeeReport = { employeeId, weeklyMinutes: Array.from({ length: weeks }, () => 0), alerts: [], warnings: [] };
   if (!employee) return report;
 
   const { config } = input;
@@ -237,6 +242,8 @@ export function evaluateEmployee(input: RulesInput, employeeId: string, options:
   const { blocks, worked, missingHours } = buildDays(input, employee, days);
   const alert = (kind: AlertKind, day: DayIndex | null, week: number | null, message: string, endDay?: DayIndex) =>
     report.alerts.push({ kind, employeeId, day, week, message, ...(endDay !== undefined ? { endDay } : {}) });
+  const warn = (kind: AlertKind, day: DayIndex | null, week: number | null, message: string) =>
+    report.warnings.push({ kind, employeeId, day, week, message });
   const overlap = circular ? overlapCircular : overlapLinear;
 
   // Dia de trabalho sem turno válido: as horas não podem ser conferidas (turno removido, dado inconsistente).
@@ -342,8 +349,8 @@ export function evaluateEmployee(input: RulesInput, employeeId: string, options:
     const prevEnd = i === 0 ? prev.end - CYCLE_MINUTES : prev.end;
     const length = b.start - prevEnd;
     rests.push({ start: prevEnd, end: b.start, length });
-    if (!config.ignoreRest11h && length < INTERSHIFT_REST_MINUTES) {
-      alert(
+    if (length < INTERSHIFT_REST_MINUTES) {
+      warn(
         'intershift-rest',
         b.day,
         weekOf(b.day),
@@ -352,28 +359,23 @@ export function evaluateEmployee(input: RulesInput, employeeId: string, options:
     }
   });
 
-  // Descanso semanal: em cada semana, um descanso de 35h seguidas do qual ao menos 24h caem dentro da semana.
+  // Descanso semanal: em cada semana, um descanso seguido do qual ao menos 24h caem dentro da semana.
   // Assim, uma folga que só invade a semana por algumas horas não conta para ela.
-  // Com as 11h ignoradas, o descanso semanal é só o das 24h.
-  const weeklyRest = config.ignoreRest11h ? WEEKLY_REST_CORE_MINUTES : WEEKLY_REST_MINUTES;
+  // Sem 24h seguidas é alerta legal; com 24h mas sem 35h (24h + as 11h entre jornadas) é só aviso.
   if (timeline.length > 0) {
     for (let week = 0; week < weeks; week++) {
       const lo = week * WEEK_MINUTES;
       const hi = lo + WEEK_MINUTES;
-      const ok = rests.some(
-        (r) => r.length >= weeklyRest && overlap(r.start, r.end, lo, hi) >= WEEKLY_REST_CORE_MINUTES,
+      const has = (min: number) => rests.some((r) => r.length >= min && overlap(r.start, r.end, lo, hi) >= WEEKLY_REST_CORE_MINUTES);
+      if (has(WEEKLY_REST_MINUTES)) continue;
+      const longest = Math.max(
+        0,
+        ...rests.filter((r) => overlap(r.start, r.end, lo, hi) > 0).map((r) => Math.min(r.length, overlap(r.start, r.end, lo, hi))),
       );
-      if (!ok) {
-        const longest = Math.max(
-          0,
-          ...rests.filter((r) => overlap(r.start, r.end, lo, hi) > 0).map((r) => Math.min(r.length, overlap(r.start, r.end, lo, hi))),
-        );
-        alert(
-          'weekly-rest',
-          null,
-          week,
-          `${weekName(week)} sem descanso de ${formatDuration(weeklyRest)} seguidas (maior descanso: ${formatDuration(longest)})`,
-        );
+      if (!has(WEEKLY_REST_CORE_MINUTES)) {
+        alert('weekly-rest', null, week, `${weekName(week)} sem descanso de 24h seguidas (maior descanso: ${formatDuration(longest)})`);
+      } else {
+        warn('weekly-rest', null, week, `${weekName(week)} sem descanso de 35h seguidas (24h + 11h; maior descanso: ${formatDuration(longest)})`);
       }
     }
   }

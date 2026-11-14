@@ -31,6 +31,20 @@ export function AlertCounter({ count, onOpen }: AlertCounterProps) {
   );
 }
 
+/** Linha de avisos de descanso (11h entre jornadas, 35h semanais): em laranja, abaixo dos alertas legais. */
+export function WarningLine({ count, onOpen }: AlertCounterProps) {
+  if (count === 0) return null;
+  return (
+    <button type="button" className="alert-counter is-warning" onClick={onOpen}>
+      <span className="alert-counter-icon" aria-hidden="true">
+        ▲
+      </span>
+      <span>{plural(count, 'aviso de descanso', 'avisos de descanso')}</span>
+      <span className="alert-counter-hint">Menos de 11h entre jornadas · ver lista</span>
+    </button>
+  );
+}
+
 export interface AlertListProps {
   title: string;
   alerts: LegalAlert[];
@@ -39,14 +53,16 @@ export interface AlertListProps {
   where?(alert: LegalAlert): string;
   onSelect(alert: LegalAlert): void;
   onClose(): void;
+  /** Avisos de descanso em vez de alertas legais (laranja, outro texto). */
+  warning?: boolean;
 }
 
 /** Lista de alertas: pessoa, regra e dia. Tocar leva à célula. */
-export function AlertList({ title, alerts, employees, where = alertWhere, onSelect, onClose }: AlertListProps) {
+export function AlertList({ title, alerts, employees, where = alertWhere, onSelect, onClose, warning = false }: AlertListProps) {
   return (
     <Sheet
-      tone="alert"
-      kicker="Alertas legais"
+      tone={warning ? 'gap' : 'alert'}
+      kicker={warning ? 'Avisos de descanso' : 'Alertas legais'}
       title={title}
       onClose={onClose}
       footer={
@@ -64,8 +80,8 @@ export function AlertList({ title, alerts, employees, where = alertWhere, onSele
           {alerts.map((a, i) => (
             <li key={i}>
               <button type="button" className="alert-item" onClick={() => onSelect(a)}>
-                <span className="alert-icon" aria-hidden="true">
-                  !
+                <span className={`alert-icon${warning ? ' is-warning' : ''}`} aria-hidden="true">
+                  {warning ? '▲' : '!'}
                 </span>
                 <span className="alert-item-body">
                   <span className="alert-item-who">
@@ -78,7 +94,11 @@ export function AlertList({ title, alerts, employees, where = alertWhere, onSele
           ))}
         </ul>
       )}
-      <p className="hint">Alertas não impedem salvar nem exportar. Eles somem quando o problema é resolvido.</p>
+      <p className="hint">
+        {warning
+          ? 'A CLT pede 11h de descanso entre uma jornada e a próxima. O site não bloqueia: confira se dá para ajustar.'
+          : 'Alertas não impedem salvar nem exportar. Eles somem quando o problema é resolvido.'}
+      </p>
     </Sheet>
   );
 }

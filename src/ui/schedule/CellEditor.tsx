@@ -27,6 +27,8 @@ export interface CellEditorProps {
   day: number;
   /** Alertas da pessoa (todos); o painel mostra os do dia e os da semana. */
   alerts: LegalAlert[];
+  /** Avisos de descanso da pessoa (11h entre jornadas, 35h semanais). */
+  warnings?: LegalAlert[];
   /** Nome da função que a pessoa cobre neste dia (segunda área), se houver. */
   coveringRole?: string;
   /** Início do almoço planejado pelo site para este dia (usado quando não há um horário escolhido). */
@@ -67,7 +69,7 @@ function sinceStart(start: number, m: number): number {
 }
 
 /** Painel de edição de um dia: aplica na hora, com "Desfazer" para as mudanças feitas nesta sessão. */
-export function CellEditor({ employeeId, day, alerts, coveringRole, plannedBreakStart = null, date, onClose }: CellEditorProps) {
+export function CellEditor({ employeeId, day, alerts, warnings = [], coveringRole, plannedBreakStart = null, date, onClose }: CellEditorProps) {
   const config = useAppStore((s) => s.document.config);
   const employee = useAppStore((s) => s.document.employees.find((e) => e.id === employeeId));
   const cycleCell = useAppStore((s) => s.document.schedule?.[employeeId]?.[day]);
@@ -133,7 +135,9 @@ export function CellEditor({ employeeId, day, alerts, coveringRole, plannedBreak
   /** Dia de turno único: todos no horário da loja; não há turno para escolher. */
   const single = isSingleShiftDay(config, weekdayOf(day)) ? findShift(config, shiftId) : undefined;
 
-  const dayAlerts = alerts.filter((a) => a.day === day || (a.day === null && (a.week === weekOf(day) || a.week === null)));
+  const onThisDay = (a: LegalAlert) => a.day === day || (a.day === null && (a.week === weekOf(day) || a.week === null));
+  const dayAlerts = alerts.filter(onThisDay);
+  const dayWarnings = warnings.filter(onThisDay);
   const holiday = onDate?.source === 'holiday';
   const dated = onDate?.source === 'override';
 
@@ -288,6 +292,21 @@ export function CellEditor({ employeeId, day, alerts, coveringRole, plannedBreak
                 </span>
                 <span>
                   <span className="visually-hidden">Alerta legal: </span>
+                  {a.message}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {dayWarnings.length > 0 && (
+          <ul className="alert-items">
+            {dayWarnings.map((a, i) => (
+              <li key={i} className="alert-item-static">
+                <span className="alert-icon is-warning" aria-hidden="true">
+                  ▲
+                </span>
+                <span>
+                  <span className="visually-hidden">Aviso: </span>
                   {a.message}
                 </span>
               </li>

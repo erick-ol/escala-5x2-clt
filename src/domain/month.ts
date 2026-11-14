@@ -236,6 +236,8 @@ export interface MonthEmployeeReport {
   /** Minutos trabalhados em cada semana de `weeks` (semanas que tocam o mês). */
   weeklyMinutes: number[];
   alerts: MonthAlert[];
+  /** Avisos de descanso (11h entre jornadas, 35h semanais) que tocam o mês. */
+  warnings: MonthAlert[];
 }
 
 export interface MonthProjection {
@@ -246,6 +248,8 @@ export interface MonthProjection {
   reports: Record<string, MonthEmployeeReport>;
   /** Alertas que tocam o mês, na ordem da equipe. */
   alerts: MonthAlert[];
+  /** Avisos de descanso que tocam o mês, na ordem da equipe. */
+  warnings: MonthAlert[];
   /** Vagas sem ninguém em datas do mês. */
   gapCount: number;
   /** Almoços sem cobertura em datas do mês. */
@@ -311,15 +315,19 @@ export function projectMonth(doc: AppDocument, year: number, month: number): Mon
 
   const reports: Record<string, MonthEmployeeReport> = {};
   const alerts: MonthAlert[] = [];
+  const warnings: MonthAlert[] = [];
   for (const e of doc.employees) {
     const r = raw[e.id];
     const list = (r?.alerts ?? []).filter(touchesMonth).map(toMonthAlert);
+    const warnList = (r?.warnings ?? []).filter(touchesMonth).map(toMonthAlert);
     reports[e.id] = {
       employeeId: e.id,
       weeklyMinutes: weeks.map((_, i) => r?.weeklyMinutes[PAD_WEEKS_BEFORE + i] ?? 0),
       alerts: list,
+      warnings: warnList,
     };
     alerts.push(...list);
+    warnings.push(...warnList);
   }
 
   let gapCount = 0;
@@ -329,7 +337,7 @@ export function projectMonth(doc: AppDocument, year: number, month: number): Mon
     lunchGapCount += w.lunchGaps.filter((g) => inMonth(w.dates[g.day - w.firstDay])).length;
   }
 
-  return { year, month, dates, weeks, reports, alerts, gapCount, lunchGapCount };
+  return { year, month, dates, weeks, reports, alerts, warnings, gapCount, lunchGapCount };
 }
 
 /**

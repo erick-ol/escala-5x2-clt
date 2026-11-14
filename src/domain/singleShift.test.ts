@@ -133,7 +133,6 @@ describe('turno único: cobertura', () => {
   });
 });
 
-const row2 = (s: Schedule, id: string, d: number) => s[id][(d + CYCLE_DAYS) % CYCLE_DAYS].status === 'work';
 
 describe('turno único: gerador', () => {
   function runs(row: Cell[]): { rest: number; work: number } {
@@ -168,12 +167,9 @@ describe('turno único: gerador', () => {
         expect(work).toBeLessThanOrEqual(6);
       }
       const reports = evaluateRules({ config, employees: doc.employees, schedule });
-      // Inclui o descanso de 11h: quem fecha no sábado (20:30) não pode abrir o domingo às 07:00.
+      // O descanso de 11h (sábado 20:30 → domingo 07:00) não restringe o gerador: vira aviso, não alerta legal.
       const forbidden = new Set(['days-off', 'too-many-offs', 'sunday-rotation', 'work-streak', 'intershift-rest']);
       expect(Object.values(reports).flatMap((r) => r.alerts.filter((a) => forbidden.has(a.kind)))).toEqual([]);
-      for (const e of doc.employees.filter((x) => x.shiftId === 'tarde')) {
-        for (const d of SUNDAYS) expect(row2(schedule, e.id, d - 1) && row2(schedule, e.id, d), `${e.name} sáb+dom`).toBe(false);
-      }
     });
   }
 

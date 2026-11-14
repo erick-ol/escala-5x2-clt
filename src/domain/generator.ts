@@ -1,10 +1,6 @@
-import { INTERSHIFT_REST_MINUTES } from './legal';
 import {
-  MINUTES_PER_DAY,
   allowsOff,
-  effectiveHours,
   effectiveShiftId,
-  grossMinutes,
   isSingleShiftDay,
   isVirtualShiftId,
   requiredCount,
@@ -151,7 +147,8 @@ class Solver {
       }
     }
 
-    this.restConflict = all.map((e) => restConflictMask(config, e));
+    // O descanso de 11h entre jornadas não restringe o gerador: vira aviso na escala (rules.ts).
+    this.restConflict = all.map(() => 0);
 
     this.off = all.map(() => Array.from({ length: CYCLE_DAYS }, () => false));
     this.at = all.map((e, k) => {
@@ -502,24 +499,6 @@ function maskCost(
   return { violations, soft: pairCost + STREAK_PENALTY * streak };
 }
 
-/**
- * Bit d = trabalhar no dia d-1 (circular) e no dia d, no horário padrão da pessoa, deixa menos de 11h de
- * descanso entre as jornadas. Acontece, por exemplo, entre o sábado à tarde e um domingo de turno único de manhã.
- */
-function restConflictMask(config: StoreConfig, employee: Employee): number {
-  if (config.ignoreRest11h) return 0;
-  const work: Cell = { status: 'work' };
-  const hours = Array.from({ length: CYCLE_DAYS }, (_, d) => effectiveHours(config, employee, work, d));
-  let mask = 0;
-  for (let d = 0; d < CYCLE_DAYS; d++) {
-    const prev = hours[(d + CYCLE_DAYS - 1) % CYCLE_DAYS];
-    const cur = hours[d];
-    if (!prev || !cur) continue;
-    const rest = MINUTES_PER_DAY + cur.start - (prev.start + grossMinutes(prev));
-    if (rest < INTERSHIFT_REST_MINUTES) mask |= 1 << d;
-  }
-  return mask;
-}
 
 /** R10/R10a pela máscara de folgas: 1 domingo de folga no ciclo; mulheres nunca 2 domingos trabalhados seguidos. */
 function sundayRuleOk(offMask: number, isWoman: boolean): boolean {

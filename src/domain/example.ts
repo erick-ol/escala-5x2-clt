@@ -13,7 +13,7 @@ const sunday: StoreDay = { open: true, opensAt: h(6, 45), closesAt: h(13, 45), s
  * Exemplo pré-carregado (R7): mercado com 7 funcionários (caixa, balcão e reposição), manhã e tarde,
  * aberto 7 dias, regime de 40h e folgas que podem ser separadas.
  * Segunda a sábado 06:15–20:45; domingo só de manhã (06:45–13:45) com turno único e 2 no balcão.
- * O repositor não tem mínimo: entra como caixa quando falta alguém. O descanso de 11h entre jornadas é ignorado.
+ * O repositor não tem mínimo: entra como caixa quando falta alguém.
  */
 export function exampleDocument(today: Date = new Date()): AppDocument {
   return {
@@ -40,7 +40,6 @@ export function exampleDocument(today: Date = new Date()): AppDocument {
       ],
       regime: '40h',
       offPattern: 'flexible',
-      ignoreRest11h: true,
       lunchFrom: DEFAULT_LUNCH_FROM,
     },
     employees: [

@@ -181,22 +181,24 @@ describe('regras CLT nas datas reais (modo linear)', () => {
     expect(month.alerts.filter((a) => a.weekStart === '2026-12-27')).toEqual([]);
   });
 
-  test('descanso de 11h quebrado na virada do mês (30/11 → 01/12) aparece em dezembro', () => {
+  test('descanso de 11h quebrado na virada do mês (30/11 → 01/12) aparece como aviso em dezembro', () => {
     const doc = handmade((d) => {
       d.calendar.dateOverrides = [
         override('2026-11-30', 'richard', { status: 'work', hours: { start: 15 * 60, end: 23 * 60, breakMinutes: 60 } }),
       ];
     });
     const dec = projectMonth(doc, 2026, 12)!;
-    expect(dec.alerts.filter((a) => a.kind === 'intershift-rest')).toEqual([
+    expect(dec.warnings.filter((a) => a.kind === 'intershift-rest')).toEqual([
       expect.objectContaining({ employeeId: 'richard', date: '2026-12-01' }),
     ]);
-    // Novembro só vê o fim do mês: o alerta é do dia 01/12 e fica de fora.
+    expect(dec.alerts.filter((a) => a.kind === 'intershift-rest')).toEqual([]);
+    // Novembro só vê o fim do mês: o aviso é do dia 01/12 e fica de fora.
     const nov = projectMonth(doc, 2026, 11)!;
-    expect(nov.alerts.filter((a) => a.kind === 'intershift-rest')).toEqual([]);
+    expect(nov.warnings.filter((a) => a.kind === 'intershift-rest')).toEqual([]);
     // No ciclo circular nada muda (o ajuste é só da data).
     const cycle = evaluateRules({ config: doc.config, employees: doc.employees, schedule: doc.schedule! });
     expect(cycle.richard.alerts).toEqual([]);
+    expect(cycle.richard.warnings).toEqual([]);
   });
 
   test('7 dias seguidos de trabalho atravessando a semana geram "work-streak" na data do 7º dia', () => {

@@ -50,6 +50,11 @@ function alerts(cells: Cell[], opts: Parameters<typeof input>[1] = {}): LegalAle
   return evaluateEmployee(input(cells, opts), 'e1').alerts;
 }
 
+/** Avisos de descanso (11h entre jornadas, 35h semanais): não são alertas legais. */
+function warnings(cells: Cell[], opts: Parameters<typeof input>[1] = {}): LegalAlert[] {
+  return evaluateEmployee(input(cells, opts), 'e1').warnings;
+}
+
 function ofKind(list: LegalAlert[], kind: AlertKind): LegalAlert[] {
   return list.filter((a) => a.kind === kind);
 }
@@ -90,7 +95,7 @@ describe('motor de regras CLT', () => {
     test('AE4: saída 20:30 na sexta e entrada 5:45 no sábado gera alerta', () => {
       const cells = withCells(std(), { 5: at(h(13), h(20, 30)), 6: at(h(5, 45), h(13, 30)) });
       // Semana 1 fica com só um dia sem trabalho; o foco aqui é o descanso.
-      const list = ofKind(alerts(cells), 'intershift-rest');
+      const list = ofKind(warnings(cells), 'intershift-rest');
       expect(list).toHaveLength(1);
       expect(list[0].day).toBe(6);
       expect(list[0].message).toBe('Descanso de 9h15 entre jornadas (mínimo 11h)');
@@ -98,7 +103,7 @@ describe('motor de regras CLT', () => {
 
     test('virada do ciclo: saída 22:00 no dia 21 (sábado) e entrada 6:00 no dia 1 (domingo) gera alerta', () => {
       const cells = withCells(std(), { 20: at(h(14), h(22)), 0: at(h(6), h(14)) });
-      const list = ofKind(alerts(cells), 'intershift-rest');
+      const list = ofKind(warnings(cells), 'intershift-rest');
       expect(list).toHaveLength(1);
       expect(list[0].day).toBe(0);
       expect(list[0].message).toContain('8h');
@@ -106,40 +111,14 @@ describe('motor de regras CLT', () => {
 
     test('exatamente 11h não gera alerta', () => {
       const cells = withCells(std(), { 1: at(h(9), h(17)), 2: at(h(4), h(12)) });
-      expect(ofKind(alerts(cells), 'intershift-rest')).toEqual([]);
+      expect(ofKind(warnings(cells), 'intershift-rest')).toEqual([]);
     });
 
     test('jornada que cruza a meia-noite conta a saída no dia seguinte', () => {
       // Segunda 22:00 a terça 06:00, terça 13:00 → 7h de descanso.
       const cells = withCells(std(), { 1: at(h(22), h(6)), 2: at(h(13), h(19)) });
-      const list = ofKind(alerts(cells), 'intershift-rest');
+      const list = ofKind(warnings(cells), 'intershift-rest');
       expect(list.map((a) => a.day)).toEqual([2]);
-    });
-  });
-
-  describe('11h ignoradas (opção da loja)', () => {
-    const late = at(h(13), h(20, 30), 60);
-    const early = at(h(5, 45), h(13, 30), 60);
-
-    test('sem alerta de descanso entre jornadas', () => {
-      const cells = withCells(std(), { 5: at(h(13), h(20, 30)), 6: at(h(5, 45), h(13, 30)) });
-      expect(ofKind(alerts(cells), 'intershift-rest')).toHaveLength(1);
-      expect(ofKind(alerts(cells, { config: { ignoreRest11h: true } }), 'intershift-rest')).toEqual([]);
-    });
-
-    test('descanso semanal passa a exigir só 24h', () => {
-      // Folga única entre saída 20:30 e entrada 5:45: 33h15, menos que 35h e mais que 24h.
-      const split: Cell[] = [W, late, O, early, late, O, early];
-      const cells = cycle(week5x2(), split, week5x2());
-      expect(ofKind(alerts(cells), 'weekly-rest')).toHaveLength(1);
-      expect(ofKind(alerts(cells, { config: { ignoreRest11h: true } }), 'weekly-rest')).toEqual([]);
-    });
-
-    test('mesmo com as 11h ignoradas, semana sem nenhum descanso de 24h alerta', () => {
-      // Semana inteira trabalhando: nenhum descanso de 24h.
-      const all: Cell[] = [W, W, W, W, W, W, W];
-      const list = ofKind(alerts(cycle(all, week5x2(), week5x2()), { config: { ignoreRest11h: true } }), 'weekly-rest');
-      expect(list.map((a) => a.message)).toEqual([expect.stringContaining('sem descanso de 24h seguidas')]);
     });
   });
 
@@ -242,7 +221,7 @@ describe('motor de regras CLT', () => {
       const report = evaluateEmployee(input(std(), { extra }), 'e1');
       expect(report.weeklyMinutes[0]).toBe(h(32, 30) + h(8));
       // Domingo 22:00 → segunda 06:30 = 8h30 de descanso.
-      expect(ofKind(report.alerts, 'intershift-rest').map((a) => a.day)).toEqual([1]);
+      expect(ofKind(report.warnings, 'intershift-rest').map((a) => a.day)).toEqual([1]);
     });
 
     test('ignora jornada extra de outra pessoa', () => {
@@ -316,13 +295,13 @@ describe('motor de regras CLT', () => {
       const late = at(h(13), h(20, 30), 60);
       const early = at(h(5, 45), h(13, 30), 60);
       const split: Cell[] = [W, late, O, early, late, O, early];
-      const list = ofKind(alerts(cycle(week5x2(), split, week5x2())), 'weekly-rest');
+      const list = ofKind(warnings(cycle(week5x2(), split, week5x2())), 'weekly-rest');
       expect(list).toHaveLength(1);
       expect(list[0].week).toBe(1);
       expect(list[0].message).toContain('33h15');
 
       const together: Cell[] = [W, W, W, early, late, O, O];
-      expect(ofKind(alerts(cycle(week5x2(), together, week5x2())), 'weekly-rest')).toEqual([]);
+      expect(ofKind(warnings(cycle(week5x2(), together, week5x2())), 'weekly-rest')).toEqual([]);
     });
 
     test('descanso que só invade a semana por poucas horas não vale para ela', () => {
@@ -331,12 +310,24 @@ describe('motor de regras CLT', () => {
       const late = at(h(13), h(20, 30), 60);
       const early = at(h(5, 45), h(13, 30), 60);
       const split: Cell[] = [early, W, late, O, early, late, O];
-      const list = ofKind(alerts(cycle(week5x2(), split, [early, W, W, W, W, O, O])), 'weekly-rest');
+      const list = ofKind(warnings(cycle(week5x2(), split, [early, W, W, W, W, O, O])), 'weekly-rest');
       expect(list.map((a) => a.week)).toEqual([1]);
     });
 
+    test('descanso menor que 11h e semana sem 35h são avisos, não alertas legais', () => {
+      const cells = withCells(std(), { 5: at(h(13), h(20, 30)), 6: at(h(5, 45), h(13, 30)) });
+      expect(ofKind(alerts(cells), 'intershift-rest')).toEqual([]);
+      expect(ofKind(warnings(cells), 'intershift-rest')).toHaveLength(1);
+    });
+
+    test('semana sem nenhum descanso de 24h é alerta legal', () => {
+      const all: Cell[] = [W, W, W, W, W, W, W];
+      const list = ofKind(alerts(cycle(all, week5x2(), week5x2())), 'weekly-rest');
+      expect(list.map((a) => a.message)).toEqual([expect.stringContaining('sem descanso de 24h seguidas')]);
+    });
+
     test('virada do ciclo: folga de sábado da semana 3 emenda no domingo da semana 1', () => {
-      expect(ofKind(alerts(std()), 'weekly-rest')).toEqual([]);
+      expect(ofKind(warnings(std()), 'weekly-rest')).toEqual([]);
     });
 
     test('pessoa sem nenhuma jornada não gera alerta de descanso', () => {

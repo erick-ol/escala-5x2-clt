@@ -226,19 +226,6 @@ describe('SetupWizard', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('deixe pelo menos 2 dias abertos sem a marca "Sem folga"');
   });
 
-  test('descanso de 11h: "Ignorar" grava a opção e mostra o aviso da CLT; "Respeitar" volta', async () => {
-    const user = userEvent.setup();
-    seedThroughRoles();
-    render(<SetupWizard onFinish={() => {}} initialStep={0} />);
-    expect(screen.getByRole('radio', { name: /Respeitar/ })).toBeChecked();
-    await user.click(screen.getByRole('radio', { name: /Ignorar/ }));
-    expect(doc().config.ignoreRest11h).toBe(true);
-    expect(screen.getByText(/a CLT exige 11h entre o fim de uma jornada/)).toBeInTheDocument();
-    await user.click(screen.getByRole('radio', { name: /Respeitar/ }));
-    expect(doc().config.ignoreRest11h).toBe(false);
-    expect(screen.queryByText(/a CLT exige 11h entre o fim de uma jornada/)).not.toBeInTheDocument();
-  });
-
   test('avançar sem nenhum funcionário mostra erro na etapa de equipe', async () => {
     const user = userEvent.setup();
     const onFinish = vi.fn();
