@@ -7,6 +7,7 @@ const workHours = z.object({
   start: minutes,
   end: minutes,
   breakMinutes: z.number().int().min(0).max(1440),
+  breakStart: minutes.optional(),
 });
 
 const storeDay = z.object({ open: z.boolean(), opensAt: minutes, closesAt: minutes });

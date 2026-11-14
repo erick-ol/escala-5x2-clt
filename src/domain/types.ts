@@ -20,6 +20,11 @@ export interface WorkHours {
   end: Minutes;
   /** Intervalo (almoço) em minutos. */
   breakMinutes: Minutes;
+  /**
+   * Início do almoço (minutos desde 00:00). Opcional: sem ele, o site planeja o almoço sozinho
+   * (lunch.ts), escalonando para a função não ficar descoberta e começando até a 6ª hora de trabalho.
+   */
+  breakStart?: Minutes;
 }
 
 export interface StoreDay {
