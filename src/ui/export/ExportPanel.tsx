@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import { createPortal } from 'react-dom';
+import { createPortal, flushSync } from 'react-dom';
 import { backupFileName, serializeBackup } from '../../state/backup';
 import { appStore, useAppStore } from '../../state/store';
 import { RestoreBackupButton } from '../RestoreBackupButton';
@@ -8,6 +8,8 @@ import { ImageExport, cyclePages, monthPages } from './ImageExport';
 import { MonthPrintSheet, PrintSheet } from './PrintSheet';
 import { downloadBlob, formatDateTime } from './download';
 import { buildExportModel, buildMonthExportModel } from './exportModel';
+import { PersonalImageExport, PersonalPrintSheet, PersonalSheetBody } from './PersonalSheet';
+import { buildPersonalModels, type PersonalScope } from './personalModel';
 import './export.css';
 
 export interface ExportPanelProps {
@@ -32,6 +34,23 @@ export function ExportPanel({ month, onClose }: ExportPanelProps) {
   const pages = useMemo(() => (monthModel ? monthPages(monthModel) : cyclePages(model)), [model, monthModel]);
   const [justBackedUp, setJustBackedUp] = useState(false);
 
+  // Por funcionário: o período segue a escolha acima (mês ou ciclo).
+  const personalScope = useMemo<PersonalScope>(
+    () => (month && scope === 'month' ? { kind: 'month', year: month.year, month: month.month } : { kind: 'cycle' }),
+    [month, scope],
+  );
+  const personalModels = useMemo(() => buildPersonalModels(document_, personalScope), [document_, personalScope]);
+  const [personId, setPersonId] = useState<string>(() => document_.employees[0]?.id ?? '');
+  const person = personalModels.find((m) => m.employeeId === personId) ?? personalModels[0] ?? null;
+  /** Folha que vai para a impressão: a da equipe, a da pessoa escolhida ou a de todos (uma página cada). */
+  const [printTarget, setPrintTarget] = useState<'team' | 'person' | 'all'>('team');
+  const printSheets = printTarget === 'all' ? personalModels : printTarget === 'person' && person ? [person] : [];
+  const print = (target: 'team' | 'person' | 'all') => {
+    // A folha certa precisa estar no DOM antes da janela de impressão abrir.
+    flushSync(() => setPrintTarget(target));
+    window.print();
+  };
+
   const panelRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const titleId = useId();
@@ -39,6 +58,8 @@ export function ExportPanel({ month, onClose }: ExportPanelProps) {
   const imageId = useId();
   const backupId = useId();
   const scopeId = useId();
+  const personalId = useId();
+  const personSelectId = useId();
 
   useEffect(() => {
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -147,7 +168,7 @@ export function ExportPanel({ month, onClose }: ExportPanelProps) {
                   ? `Folhas em paisagem com as semanas de ${monthModel.monthLabel.toLowerCase()} nas datas reais, legíveis em preto e branco.`
                   : 'Uma folha em paisagem com as 3 semanas do ciclo, legível em preto e branco.'}
               </p>
-              <button type="button" className="btn" onClick={() => window.print()}>
+              <button type="button" className="btn" onClick={() => print('team')}>
                 Imprimir escala
               </button>
             </section>
@@ -159,7 +180,58 @@ export function ExportPanel({ month, onClose }: ExportPanelProps) {
               <p className="hint">Uma imagem por semana, para caber na tela do celular.</p>
               <ImageExport key={monthModel ? 'month' : 'cycle'} storeName={model.storeName} legend={model.legend} pages={pages} />
             </section>
-            {monthModel ? <MonthPrintSheet model={monthModel} /> : <PrintSheet model={model} />}
+
+            {person && (
+              <section className="export-section export-personal" aria-labelledby={personalId}>
+                <h3 id={personalId} className="export-section-title">
+                  Por funcionário
+                </h3>
+                <p className="hint">
+                  {monthModel
+                    ? `Escala de uma pessoa em ${monthModel.monthLabel.toLowerCase()}, para entregar a ela: horários, almoço e folgas.`
+                    : 'Escala de uma pessoa nas 3 semanas do ciclo, para entregar a ela: horários, almoço e folgas.'}
+                </p>
+                <div className="field">
+                  <label htmlFor={personSelectId}>Funcionário</label>
+                  <select
+                    id={personSelectId}
+                    className="input"
+                    value={person.employeeId}
+                    onChange={(e) => setPersonId(e.target.value)}
+                  >
+                    {personalModels.map((m) => (
+                      <option key={m.employeeId} value={m.employeeId}>
+                        {m.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div
+                  className="pp-preview"
+                  data-testid="personal-preview"
+                  role="region"
+                  aria-label={`Prévia da escala de ${person.name}`}
+                  tabIndex={0}
+                >
+                  <PersonalSheetBody model={person} />
+                </div>
+                <div className="export-personal-actions">
+                  <PersonalImageExport model={person} />
+                  <button type="button" className="btn" onClick={() => print('person')}>
+                    Imprimir só esta pessoa
+                  </button>
+                  <button type="button" className="btn" onClick={() => print('all')}>
+                    Imprimir todos (uma página por pessoa)
+                  </button>
+                </div>
+              </section>
+            )}
+            {monthModel ? (
+              <MonthPrintSheet model={monthModel} skip={printTarget !== 'team'} />
+            ) : (
+              <PrintSheet model={model} skip={printTarget !== 'team'} />
+            )}
+            {printSheets.length > 0 && <PersonalPrintSheet models={printSheets} />}
           </>
         ) : (
           <p className="export-empty">Gere a escala para poder imprimir ou compartilhar a imagem.</p>

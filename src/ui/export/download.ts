@@ -31,3 +31,31 @@ export function formatDateTime(iso: string): string {
   const p = (n: number) => String(n).padStart(2, '0');
   return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} às ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
+
+export type ShareOutcome = 'shared' | 'downloaded' | 'cancelled';
+
+/**
+ * Compartilha o arquivo pela folha do sistema (WhatsApp etc.) quando o navegador aceita arquivos;
+ * senão, ou se o compartilhamento falhar, baixa o arquivo. Chame direto no toque (gesto do usuário).
+ */
+export async function shareOrDownload(file: File, title: string): Promise<ShareOutcome> {
+  let canShareFiles = false;
+  try {
+    canShareFiles = typeof navigator.share === 'function' && !!navigator.canShare?.({ files: [file] });
+  } catch {
+    canShareFiles = false;
+  }
+  if (canShareFiles) {
+    try {
+      await navigator.share({ files: [file], title });
+      return 'shared';
+    } catch (error) {
+      // Usuário fechou a folha de compartilhamento: nada a fazer.
+      if ((error as { name?: unknown } | null)?.name === 'AbortError') return 'cancelled';
+    }
+  }
+  downloadBlob(file, file.name);
+  return 'downloaded';
+}
+
+export const DOWNLOADED_NOTICE = 'Imagem baixada. Envie pelo WhatsApp a partir dos seus arquivos ou fotos.';

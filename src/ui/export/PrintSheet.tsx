@@ -29,10 +29,13 @@ export function cellClass(cell: ExportCell): string {
 
 const days = Array.from({ length: CYCLE_DAYS }, (_, d) => d);
 
-/** Folha de impressão do ciclo inteiro (R20, KTD12). Fica escondida na tela e é a única coisa impressa. */
-export function PrintSheet({ model }: { model: ExportModel }) {
+/**
+ * Folha de impressão do ciclo inteiro (R20, KTD12). Fica escondida na tela e é a única coisa impressa.
+ * `skip`: outra folha (a escala por pessoa) foi escolhida para esta impressão.
+ */
+export function PrintSheet({ model, skip }: { model: ExportModel; skip?: boolean }) {
   return createPortal(
-    <div className="print-only" data-testid="print-sheet" aria-hidden="true">
+    <div className="print-only" data-testid="print-sheet" data-print-skip={skip || undefined} aria-hidden="true">
       <header className="ps-header">
         <h1 className="ps-title">{model.storeName}</h1>
         <p className="ps-sub">Escala 5x2 · ciclo de 3 semanas que se repete</p>
@@ -154,12 +157,18 @@ function MonthLegend({ legend, hasFlex, hasHoliday }: { legend: LegendItem[]; ha
  * Folha de impressão do mês: uma tabela por semana (segunda a domingo), com as datas reais.
  * Datas fora do mês saem apagadas (cinza e itálico), legíveis em preto e branco.
  */
-export function MonthPrintSheet({ model }: { model: MonthExportModel }) {
+export function MonthPrintSheet({ model, skip }: { model: MonthExportModel; skip?: boolean }) {
   const cells = model.weeks.flatMap((w) => w.rows.flatMap((r) => r.cells));
   const hasFlex = cells.some((c) => c.kind === 'work' && !!c.flex);
   const hasHoliday = cells.some((c) => c.kind === 'closed' && !!c.holiday);
   return createPortal(
-    <div className="print-only ps-month" data-testid="print-sheet" data-scope="month" aria-hidden="true">
+    <div
+      className="print-only ps-month"
+      data-testid="print-sheet"
+      data-scope="month"
+      data-print-skip={skip || undefined}
+      aria-hidden="true"
+    >
       <header className="ps-header">
         <h1 className="ps-title">{model.storeName}</h1>
         <p className="ps-sub">Escala de {model.monthLabel} · ciclo de 3 semanas aplicado nas datas</p>

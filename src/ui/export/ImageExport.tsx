@@ -1,9 +1,9 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { toBlob } from 'html-to-image';
 import { DAYS_PER_WEEK, WEEKDAY_SHORT, WEEKS } from '../../domain/types';
 import { GapCellContent, ScheduleCellContent, cellClass } from './PrintSheet';
-import { downloadBlob, slugify } from './download';
+import { DOWNLOADED_NOTICE, shareOrDownload, slugify } from './download';
 import type { ExportModel, ExportRow, GapRow, LegendItem, MonthExportModel } from './exportModel';
 
 export const IMAGE_WIDTH = 1080;
@@ -159,27 +159,16 @@ async function waitForFonts(): Promise<void> {
   }
 }
 
-export interface ImageExportProps {
-  storeName: string;
-  legend: LegendItem[];
-  pages: ImagePage[];
-}
-
-/** Imagem para WhatsApp, uma por semana (KTD12). O PNG é gerado antes do toque em "Compartilhar". */
-export function ImageExport({ storeName, legend, pages }: ImageExportProps) {
-  const [index, setIndex] = useState(0);
-  const week = Math.min(index, pages.length - 1);
-  const page = pages[week];
+/**
+ * Gera o PNG do nó (fora da tela) sempre que `trigger` muda, antes do toque em "Compartilhar":
+ * o compartilhamento precisa acontecer dentro do gesto do usuário, sem esperar a imagem.
+ */
+export function usePngFile(nodeRef: RefObject<HTMLElement>, fileName: string, trigger: unknown) {
   const [state, setState] = useState<ImageState>({ status: 'pending' });
-  const [notice, setNotice] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
-  const nodeRef = useRef<HTMLDivElement>(null);
-  const labelId = useId();
-
   useEffect(() => {
     let cancelled = false;
     setState({ status: 'pending' });
-    setNotice(null);
     (async () => {
       try {
         await waitForFonts();
@@ -193,8 +182,7 @@ export function ImageExport({ storeName, legend, pages }: ImageExportProps) {
         });
         if (!blob) throw new Error('imagem vazia');
         if (cancelled) return;
-        const file = new File([blob], page.fileName, { type: 'image/png' });
-        setState({ status: 'ready', file });
+        setState({ status: 'ready', file: new File([blob], fileName, { type: 'image/png' }) });
       } catch {
         if (!cancelled) setState({ status: 'error' });
       }
@@ -202,34 +190,34 @@ export function ImageExport({ storeName, legend, pages }: ImageExportProps) {
     return () => {
       cancelled = true;
     };
-  }, [page, attempt]);
+    // `trigger` muda junto com o conteúdo do nó (e o nome do arquivo).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trigger, attempt]);
+  return { state, retry: () => setAttempt((n) => n + 1) };
+}
+
+export interface ImageExportProps {
+  storeName: string;
+  legend: LegendItem[];
+  pages: ImagePage[];
+}
+
+/** Imagem para WhatsApp, uma por semana (KTD12). O PNG é gerado antes do toque em "Compartilhar". */
+export function ImageExport({ storeName, legend, pages }: ImageExportProps) {
+  const [index, setIndex] = useState(0);
+  const week = Math.min(index, pages.length - 1);
+  const page = pages[week];
+  const nodeRef = useRef<HTMLDivElement>(null);
+  const labelId = useId();
+  const { state, retry } = usePngFile(nodeRef, page.fileName, page);
+  const [notice, setNotice] = useState<string | null>(null);
+  useEffect(() => setNotice(null), [page]);
 
   const share = async () => {
     if (state.status !== 'ready') return;
-    const { file } = state;
-    const title = page.shareTitle;
-    const fallback = () => {
-      downloadBlob(file, file.name);
-      setNotice('Imagem baixada. Envie pelo WhatsApp a partir dos seus arquivos ou fotos.');
-    };
     setNotice(null);
-    let canShareFiles = false;
-    try {
-      canShareFiles = typeof navigator.share === 'function' && !!navigator.canShare?.({ files: [file] });
-    } catch {
-      canShareFiles = false;
-    }
-    if (!canShareFiles) {
-      fallback();
-      return;
-    }
-    try {
-      await navigator.share({ files: [file], title });
-    } catch (error) {
-      // Usuário fechou a folha de compartilhamento: nada a fazer.
-      if ((error as { name?: unknown } | null)?.name === 'AbortError') return;
-      fallback();
-    }
+    const outcome = await shareOrDownload(state.file, page.shareTitle);
+    if (outcome === 'downloaded') setNotice(DOWNLOADED_NOTICE);
   };
 
   return (
@@ -266,7 +254,7 @@ export function ImageExport({ storeName, legend, pages }: ImageExportProps) {
           Compartilhar
         </button>
         {state.status === 'error' && (
-          <button type="button" className="btn" onClick={() => setAttempt((n) => n + 1)}>
+          <button type="button" className="btn" onClick={retry}>
             Tentar de novo
           </button>
         )}
