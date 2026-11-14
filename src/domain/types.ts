@@ -93,6 +93,14 @@ export interface CoverageMark {
   coveredBy: Coverer;
 }
 
+/** Jornada extra vinda de "coberto por [funcionário]" (KTD16), repassada às regras CLT. */
+export interface ExtraShift {
+  employeeId: string;
+  day: DayIndex;
+  shiftId: string;
+  hours: WorkHours;
+}
+
 export const SCHEMA_VERSION = 1 as const;
 
 export interface AppDocument {
