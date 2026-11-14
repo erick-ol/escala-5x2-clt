@@ -4,10 +4,15 @@ import { generateSchedule } from './generator';
 import { suggestAll, suggestFor } from './suggestions';
 import type { Employee, StoreConfig } from './types';
 
-function marketInput() {
+/**
+ * Mercado do exemplo. Por padrão sem segunda área: com ela, o João (caixa) cobre o balcão à tarde e
+ * o exemplo deixa de ter buraco de balconista à tarde, que é o cenário destes testes.
+ */
+function marketInput(opts: { secondary?: boolean } = {}) {
   const doc = exampleDocument(new Date('2026-11-14'));
-  const schedule = generateSchedule({ config: doc.config, employees: doc.employees });
-  return { config: doc.config, employees: doc.employees, schedule };
+  const employees = opts.secondary ? doc.employees : doc.employees.map((e) => ({ ...e, secondaryRoleId: undefined }));
+  const schedule = generateSchedule({ config: doc.config, employees });
+  return { config: doc.config, employees, schedule };
 }
 
 describe('sugestões', () => {
@@ -64,5 +69,17 @@ describe('sugestões', () => {
     const { summary } = computeCoverage({ ...input, marks: [] });
     expect(summary).toHaveLength(0);
     expect(suggestAll(input, summary).size).toBe(0);
+  });
+
+  test('com a segunda área, as sugestões usam a mesma contagem de buracos da cobertura', () => {
+    const input = marketInput({ secondary: true });
+    const { summary, gaps } = computeCoverage({ ...input, marks: [] });
+    expect(summary.length).toBeGreaterThan(0);
+    for (const item of summary) {
+      for (const s of suggestFor(input, item)) {
+        expect(s.gapsBefore).toBe(gaps.length);
+        expect(s.gapsAfter).toBeLessThan(s.gapsBefore);
+      }
+    }
   });
 });

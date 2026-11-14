@@ -4,6 +4,7 @@
 
 /* Marcas compartilhadas com a imagem do WhatsApp. */
 .xp-initial { font-weight: 800; }
+.xp-flex { display: block; font-size: 0.78em; font-weight: 700; color: #555; }
 .xp-times { display: block; font-size: 0.82em; letter-spacing: -0.02em; }
 .xp-off { font-weight: 800; }
 .xp-closed { font-weight: 700; color: #555; }
@@ -44,6 +45,7 @@
   .ps-table tr { break-inside: avoid; page-break-inside: avoid; }
 
   .xp-cell-work .xp-initial { font-size: 9pt; }
+  .xp-cell-work .xp-flex { font-size: 6pt; }
   .xp-cell-work .xp-times { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 6.2pt; }
   /* Folga: hachura diagonal leve; loja fechada: cinza chapado. Ambos legíveis sem cor. */
   .xp-cell-off { background: repeating-linear-gradient(45deg, #fff 0 3pt, #ccc 3pt 4pt); font-size: 11pt; }

@@ -11,6 +11,8 @@ export interface CellEditorProps {
   day: number;
   /** Alertas da pessoa (todos); o painel mostra os do dia e os da semana. */
   alerts: LegalAlert[];
+  /** Nome da função que a pessoa cobre neste dia (segunda área), se houver. */
+  coveringRole?: string;
   onClose(): void;
 }
 
@@ -30,7 +32,7 @@ function sameHours(a: WorkHours, b: WorkHours) {
 }
 
 /** Painel de edição de um dia: aplica na hora, com "Desfazer" para as mudanças feitas nesta sessão. */
-export function CellEditor({ employeeId, day, alerts, onClose }: CellEditorProps) {
+export function CellEditor({ employeeId, day, alerts, coveringRole, onClose }: CellEditorProps) {
   const config = useAppStore((s) => s.document.config);
   const employee = useAppStore((s) => s.document.employees.find((e) => e.id === employeeId));
   const cell = useAppStore((s) => s.document.schedule?.[employeeId]?.[day]);
@@ -121,6 +123,7 @@ export function CellEditor({ employeeId, day, alerts, onClose }: CellEditorProps
 
           {cell.status === 'work' && (
             <>
+              {coveringRole && <p className="sheet-flex">Neste dia cobre: {coveringRole}</p>}
               <div className="field">
                 <label htmlFor={shiftSelectId}>Turno</label>
                 <select

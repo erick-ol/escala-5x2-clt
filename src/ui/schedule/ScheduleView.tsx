@@ -10,7 +10,8 @@ import { AlertCounter, AlertList } from './AlertCounter';
 import { CellEditor } from './CellEditor';
 import { CoverageSummary } from './CoverageSummary';
 import { GapSheet } from './GapSheet';
-import { plural } from './labels';
+import { flexFor } from '../flex';
+import { plural, roleName } from './labels';
 import { useMediaQuery } from './useMediaQuery';
 import { WeekGrid, type Highlight } from './WeekGrid';
 import './schedule.css';
@@ -166,6 +167,7 @@ export function ScheduleView({ onExport, initialError = null }: ScheduleViewProp
         <span className="legend-chip legend-gap">▲ Falta</span> buraco
         <span className="legend-chip legend-alert">!</span> alerta legal
         <span className="legend-chip legend-covered">✓</span> coberto
+        <span className="legend-chip legend-flex">→</span> cobrindo outra função
       </p>
 
       <div className="sv-actionbar" role="region" aria-label="Ações da escala">
@@ -182,6 +184,10 @@ export function ScheduleView({ onExport, initialError = null }: ScheduleViewProp
           employeeId={editing.employeeId}
           day={editing.day}
           alerts={reports[editing.employeeId]?.alerts ?? []}
+          coveringRole={(() => {
+            const f = flexFor(coverage, editing.employeeId, editing.day);
+            return f ? roleName(doc.config, f.roleId) : undefined;
+          })()}
           onClose={() => setEditing(null)}
         />
       )}

@@ -4,19 +4,23 @@ import { exampleDocument } from './example';
 import { fitEmployee, generateSchedule } from './generator';
 import { evaluateRules } from './rules';
 import { weekOf } from './time';
-import { CYCLE_DAYS, DAYS_PER_WEEK, SUNDAY, WEEKS, type Employee, type Schedule, type StoreConfig } from './types';
+import { CYCLE_DAYS, DAYS_PER_WEEK, SUNDAY, WEEKS, type Cell, type Employee, type OffPattern, type Schedule, type StoreConfig } from './types';
 import { defaultRow } from '../state/store';
 
 const h = (hh: number, mm = 0) => hh * 60 + mm;
 const FIXED_DATE = new Date('2026-12-20T12:00:00Z');
 
-function example() {
+function example(offPattern: OffPattern = 'together') {
   const doc = exampleDocument(FIXED_DATE);
-  return { config: doc.config, employees: doc.employees };
+  return { config: { ...doc.config, offPattern }, employees: doc.employees };
 }
 
 /** Equipe sintética: `perGroup` pessoas por (função, turno), com `required` por dia. */
-function team(perGroup: number, required: number, opts: { shifts?: number; roles?: number; womenPerGroup?: number } = {}) {
+function team(
+  perGroup: number,
+  required: number,
+  opts: { shifts?: number; roles?: number; womenPerGroup?: number; offPattern?: OffPattern } = {},
+) {
   const nShifts = opts.shifts ?? 3;
   const nRoles = opts.roles ?? 2;
   const shifts = Array.from({ length: nShifts }, (_, i) => ({
@@ -34,6 +38,7 @@ function team(perGroup: number, required: number, opts: { shifts?: number; roles
     roles,
     minimums: shifts.flatMap((s) => roles.map((r) => ({ roleId: r.id, shiftId: s.id, perWeekday: Array(7).fill(required) }))),
     regime: '42h',
+    offPattern: opts.offPattern ?? 'together',
   };
   const employees: Employee[] = [];
   for (const s of shifts) {
@@ -62,17 +67,69 @@ function sundaysOff(schedule: Schedule, id: string): number {
   return n;
 }
 
-const FORBIDDEN = new Set(['days-off', 'too-many-offs', 'sunday-rotation']);
+const FORBIDDEN = new Set(['days-off', 'too-many-offs', 'sunday-rotation', 'work-streak']);
 
 function forbiddenAlerts(config: StoreConfig, employees: Employee[], schedule: Schedule) {
   const reports = evaluateRules({ config, employees, schedule });
   return Object.values(reports).flatMap((r) => r.alerts.filter((a) => FORBIDDEN.has(a.kind)));
 }
 
+/**
+ * Maior sequência circular de descanso que contém ao menos uma folga atribuída ('off'),
+ * e maior sequência circular de trabalho. Dias de loja fechada sozinhos não contam contra a pessoa.
+ */
+function runs(row: Cell[]): { rest: number; work: number } {
+  const n = row.length;
+  const start = row.findIndex((c, d) => c.status === 'work' && row[(d + n - 1) % n].status !== 'work');
+  if (start < 0) return row.every((c) => c.status === 'work') ? { rest: 0, work: n } : { rest: 0, work: 0 };
+  let rest = 0;
+  let work = 0;
+  let len = 0;
+  let kind: 'work' | 'rest' = 'work';
+  let hasOff = false;
+  const close = () => {
+    if (kind === 'work') work = Math.max(work, len);
+    else if (hasOff) rest = Math.max(rest, len);
+  };
+  for (let k = 0; k < n; k++) {
+    const c = row[(start + k) % n];
+    const k2 = c.status === 'work' ? 'work' : 'rest';
+    if (k2 !== kind) {
+      close();
+      kind = k2;
+      len = 0;
+      hasOff = false;
+    }
+    len++;
+    if (c.status === 'off') hasOff = true;
+  }
+  close();
+  return { rest, work };
+}
+
+/** Folgas com outra folga (ou loja fechada) colada, no ciclo circular. */
+function adjacentOffs(schedule: Schedule, ids: string[]): number {
+  let n = 0;
+  for (const id of ids) {
+    const row = schedule[id];
+    for (let d = 0; d < CYCLE_DAYS; d++) {
+      if (row[d].status !== 'off') continue;
+      if (row[(d + CYCLE_DAYS - 1) % CYCLE_DAYS].status !== 'work' || row[(d + 1) % CYCLE_DAYS].status !== 'work') n++;
+    }
+  }
+  return n;
+}
+
 const scenarios = {
   example: example(),
+  'example (folgas flexíveis)': example('flexible'),
   'equipe média com mulheres': team(4, 2, { womenPerGroup: 2 }),
+  'equipe média com mulheres (flexível)': team(4, 2, { womenPerGroup: 2, offPattern: 'flexible' }),
   'equipe apertada': team(3, 2, { shifts: 2, womenPerGroup: 1 }),
+  'equipe apertada (flexível)': team(3, 2, { shifts: 2, womenPerGroup: 1, offPattern: 'flexible' }),
+  'sem mínimo': team(2, 0, { shifts: 1, roles: 1, womenPerGroup: 1 }),
+  'sem mínimo (flexível)': team(2, 0, { shifts: 1, roles: 1, womenPerGroup: 1, offPattern: 'flexible' }),
+  'equipe grande': team(5, 3, { womenPerGroup: 2 }),
 };
 
 describe('generateSchedule', () => {
@@ -103,8 +160,16 @@ describe('generateSchedule', () => {
         }
       });
 
-      it('não gera alertas de folgas nem de domingo', () => {
+      it('não gera alertas de folgas, de domingo nem de dias seguidos', () => {
         expect(forbiddenAlerts(input.config, input.employees, schedule)).toEqual([]);
+      });
+
+      it('nunca mais de 2 dias seguidos de descanso nem mais de 6 de trabalho (circular)', () => {
+        for (const e of input.employees) {
+          const r = runs(schedule[e.id]);
+          expect(r.rest, `${e.id} descanso`).toBeLessThanOrEqual(2);
+          expect(r.work, `${e.id} trabalho`).toBeLessThanOrEqual(6);
+        }
       });
     });
   }
@@ -114,6 +179,37 @@ describe('generateSchedule', () => {
     expect(generateSchedule(input)).toEqual(generateSchedule(structuredClone(input)));
     const ex = example();
     expect(generateSchedule(ex)).toEqual(generateSchedule(structuredClone(ex)));
+    const flex = example('flexible');
+    expect(generateSchedule(flex)).toEqual(generateSchedule(structuredClone(flex)));
+  });
+
+  it('exemplo do mercado: Andreza e Pedro sem 3 ou 4 descansos seguidos na virada da semana', () => {
+    for (const mode of ['together', 'flexible'] as const) {
+      const { config, employees } = example(mode);
+      const schedule = generateSchedule({ config, employees });
+      for (const id of ['andreza', 'pedro']) expect(runs(schedule[id]).rest, `${mode} ${id}`).toBeLessThanOrEqual(2);
+    }
+  });
+
+  it('exemplo do mercado: a segunda área (caixa que cobre balcão) reduz os buracos', () => {
+    for (const mode of ['together', 'flexible'] as const) {
+      const { config, employees } = example(mode);
+      const plain = employees.map((e) => ({ ...e, secondaryRoleId: undefined }));
+      const withFlex = countGaps(config, employees, generateSchedule({ config, employees }));
+      const without = countGaps(config, plain, generateSchedule({ config, employees: plain }));
+      expect(withFlex, mode).toBeLessThan(without);
+    }
+  });
+
+  it("'together' forma pares de folga; 'flexible' separa mais as folgas", () => {
+    const together = team(3, 0, { shifts: 1, roles: 1, womenPerGroup: 1 });
+    const flexible = team(3, 0, { shifts: 1, roles: 1, womenPerGroup: 1, offPattern: 'flexible' });
+    const ids = together.employees.map((e) => e.id);
+    const totalOffs = ids.length * WEEKS * 2;
+    const adjTogether = adjacentOffs(generateSchedule(together), ids);
+    const adjFlexible = adjacentOffs(generateSchedule(flexible), ids);
+    expect(adjTogether).toBe(totalOffs);
+    expect(adjFlexible).toBeLessThan(adjTogether);
   });
 
   it('exemplo do mercado: no máximo 2 buracos de balconista por turno por semana e nenhum de caixa', () => {
@@ -183,21 +279,42 @@ describe('generateSchedule', () => {
     expect(countGaps(input.config, input.employees, schedule)).toBe(0);
   });
 
-  it('30 pessoas, 3 turnos e 2 funções geram em menos de 1s', () => {
-    const input = team(5, 3, { womenPerGroup: 2 });
-    expect(input.employees).toHaveLength(30);
-    const t0 = performance.now();
-    const schedule = generateSchedule(input);
-    const elapsed = performance.now() - t0;
-    console.info(`generateSchedule 30 pessoas: ${elapsed.toFixed(1)}ms`);
-    expect(elapsed).toBeLessThan(1000);
-    expect(forbiddenAlerts(input.config, input.employees, schedule)).toEqual([]);
+  for (const offPattern of ['together', 'flexible'] as const) {
+    it(`30 pessoas, 3 turnos e 2 funções geram em menos de 1s (${offPattern})`, () => {
+      const input = team(5, 3, { womenPerGroup: 2, offPattern });
+      // Metade de cada grupo cobre a outra função como segunda área.
+      input.employees.forEach((e, i) => {
+        if (i % 2 === 0) e.secondaryRoleId = e.roleId === 'r0' ? 'r1' : 'r0';
+      });
+      expect(input.employees).toHaveLength(30);
+      const t0 = performance.now();
+      const schedule = generateSchedule(input);
+      const elapsed = performance.now() - t0;
+      console.info(`generateSchedule 30 pessoas (${offPattern}): ${elapsed.toFixed(1)}ms`);
+      expect(elapsed).toBeLessThan(1000);
+      expect(forbiddenAlerts(input.config, input.employees, schedule)).toEqual([]);
+    });
+  }
+
+  it('loja fechada no domingo: folga colada ao domingo fechado não vira 3 descansos seguidos', () => {
+    for (const mode of ['together', 'flexible'] as const) {
+      const { config, employees } = example(mode);
+      config.days[SUNDAY] = { ...config.days[SUNDAY], open: false };
+      const schedule = generateSchedule({ config, employees });
+      for (const e of employees) {
+        const r = runs(schedule[e.id]);
+        expect(r.rest, `${mode} ${e.id}`).toBeLessThanOrEqual(2);
+        expect(r.work, `${mode} ${e.id}`).toBeLessThanOrEqual(6);
+      }
+    }
   });
 });
 
 describe('fitEmployee', () => {
   it('encaixa uma balconista nova à tarde sem mexer nas outras linhas', () => {
-    const { config, employees } = example();
+    // Sem segunda área: com ela o João já cobre o balcão à tarde e não sobra buraco para a nova pessoa fechar.
+    const { config, employees: withSecondary } = example();
+    const employees = withSecondary.map((e) => ({ ...e, secondaryRoleId: undefined }));
     const schedule = generateSchedule({ config, employees });
     const before = structuredClone(schedule);
     const novo: Employee = { id: 'nova', name: 'Nova', roleId: 'balconista', shiftId: 'tarde', isWoman: true };
@@ -214,13 +331,17 @@ describe('fitEmployee', () => {
     expect(forbiddenAlerts(config, all, fitted)).toEqual([]);
 
     const gapsWithout = countGaps(config, employees, schedule);
-    const gapsDefault = countGaps(config, all, withDefault);
     const gapsFitted = countGaps(config, all, fitted);
     expect(gapsFitted).toBeLessThan(gapsWithout);
-    expect(gapsFitted).toBeLessThanOrEqual(gapsDefault);
-    // Com Pedro e a nova pessoa, o balcão da tarde fica coberto.
-    const { gaps } = computeCoverage({ config, employees: all, schedule: fitted, marks: [] });
-    expect(gaps.filter((g) => g.roleId === 'balconista' && g.shiftId === 'tarde')).toEqual([]);
+    // Com Pedro e a nova pessoa, o balcão da tarde só fica descoberto em domingos (os dois precisam de
+    // domingos de folga e as folgas em pares, sem 3 descansos seguidos, não deixam separá-los todos).
+    const tarde = (s: Schedule, list: Employee[]) =>
+      computeCoverage({ config, employees: list, schedule: s, marks: [] }).gaps.filter(
+        (g) => g.roleId === 'balconista' && g.shiftId === 'tarde',
+      );
+    const after = tarde(fitted, all);
+    expect(after.length).toBeLessThan(tarde(schedule, employees).length);
+    expect(after.every((g) => g.day % DAYS_PER_WEEK === SUNDAY)).toBe(true);
   });
 
   it('funciona mesmo sem linha prévia da pessoa na escala', () => {

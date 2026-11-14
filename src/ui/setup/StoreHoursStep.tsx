@@ -1,5 +1,7 @@
 import { WEEKDAY_NAMES, type StoreDay } from '../../domain/types';
 import { useAppStore } from '../../state/store';
+import { OffPatternPicker } from './OffPatternPicker';
+import { RegimePicker } from './RegimePicker';
 import { TimeInput } from './TimeInput';
 
 export function StoreHoursStep() {
@@ -21,6 +23,16 @@ export function StoreHoursStep() {
         Funcionamento da loja
       </h2>
       <p className="hint">Dias em que abre e horário de abertura e fechamento. Domingo pode ser diferente.</p>
+
+      <section className="setup-rules" aria-labelledby="rules-title">
+        <h3 id="rules-title" className="setup-rules-title">
+          Regras da escala
+        </h3>
+        <RegimePicker />
+        <p className="hint">40h já cumpre a lei; 42h é o limite da transição (até 15/12/2027).</p>
+        <OffPatternPicker />
+        <p className="hint">Nunca mais de 2 folgas seguidas nem mais de 6 dias seguidos de trabalho.</p>
+      </section>
 
       <div className="field">
         <label htmlFor="store-name">Nome do negócio (opcional)</label>

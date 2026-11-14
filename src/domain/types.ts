@@ -47,6 +47,14 @@ export interface Minimum {
 
 export type Regime = '42h' | '40h';
 
+/**
+ * Como o gerador distribui as 2 folgas da semana:
+ * - 'together': folgas juntas (ex.: sáb + dom) sempre que possível;
+ * - 'flexible': folgas podem ser separadas, se isso cobrir melhor a operação.
+ * Nos dois casos o gerador evita mais de 2 folgas seguidas e mais de 6 dias seguidos de trabalho.
+ */
+export type OffPattern = 'together' | 'flexible';
+
 export interface StoreConfig {
   name: string;
   /** 7 entradas, segunda a domingo. */
@@ -55,12 +63,15 @@ export interface StoreConfig {
   roles: Role[];
   minimums: Minimum[];
   regime: Regime;
+  offPattern: OffPattern;
 }
 
 export interface Employee {
   id: string;
   name: string;
   roleId: string;
+  /** Segunda área: função que a pessoa cobre quando a principal já está completa naquele turno. */
+  secondaryRoleId?: string;
   shiftId: string;
   /** R5a: só altera a regra de domingo; nunca aparece na exportação. */
   isWoman: boolean;

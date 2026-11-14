@@ -38,6 +38,15 @@ export interface CoverageInput {
   marks: CoverageMark[];
 }
 
+/** Pessoa contada na segunda área (função `roleId`) porque a principal já estava completa no turno. */
+export interface FlexCover {
+  day: DayIndex;
+  shiftId: string;
+  /** Função coberta (a segunda área da pessoa). */
+  roleId: string;
+  employeeId: string;
+}
+
 export interface CoverageResult {
   /** Vagas faltantes sem cobertura. */
   gaps: Gap[];
@@ -47,6 +56,8 @@ export interface CoverageResult {
   orphanMarks: CoverageMark[];
   /** Jornadas de "coberto por [funcionário]" para as regras CLT (KTD16). */
   extraShifts: ExtraShift[];
+  /** Quem foi contado na segunda área, por dia e turno. */
+  flex: FlexCover[];
   summary: SummaryItem[];
   headline: string;
 }
@@ -65,40 +76,93 @@ function requiredFor(config: StoreConfig, day: DayIndex, shiftId: string, roleId
   return Math.max(0, min?.perWeekday[wd] ?? 0);
 }
 
-/** Pessoas escaladas por dia/turno/função, pelo turno atribuído no dia (KTD8). */
-function baseCounts(employees: Employee[], schedule: Schedule): Map<string, number> {
+/** Segunda área válida: função existente e diferente da principal. */
+export function validSecondary(e: Employee, roleIds: ReadonlySet<string>): string | undefined {
+  const r = e.secondaryRoleId;
+  return r && r !== e.roleId && roleIds.has(r) ? r : undefined;
+}
+
+interface Counted {
+  /** Pessoas contadas por dia/turno/função, já com a segunda área aplicada. */
+  counts: Map<string, number>;
+  /** Função em que cada pessoa conta, por `${day}|${shiftId}|${employeeId}` (só quem foi para a segunda área). */
+  flexRole: Map<string, string>;
+  flex: FlexCover[];
+}
+
+/**
+ * Pessoas escaladas por dia/turno/função, pelo turno atribuído no dia (KTD8).
+ * Depois, em cada dia/turno, para cada função com falta (na ordem das funções), quem tem essa função
+ * como segunda área e cuja função principal está com sobra passa a contar nela (na ordem da equipe).
+ * Nunca abre falta na função principal.
+ */
+function countWithFlex(config: StoreConfig, employees: Employee[], schedule: Schedule): Counted {
   const counts = new Map<string, number>();
+  const roleIds = new Set(config.roles.map((r) => r.id));
+  /** Quem tem segunda área, por dia/turno, na ordem da equipe. */
+  const flexible = new Map<string, Employee[]>();
   for (const e of employees) {
     const row = schedule[e.id];
     if (!row) continue;
+    const secondary = validSecondary(e, roleIds);
     for (let d = 0; d < CYCLE_DAYS; d++) {
       const cell = row[d];
       if (cell?.status !== 'work') continue;
-      const k = cellKey(d, effectiveShiftId(e, cell), e.roleId);
+      const shiftId = effectiveShiftId(e, cell);
+      const k = cellKey(d, shiftId, e.roleId);
       counts.set(k, (counts.get(k) ?? 0) + 1);
+      if (secondary) {
+        const fk = `${d}|${shiftId}`;
+        const list = flexible.get(fk);
+        if (list) list.push(e);
+        else flexible.set(fk, [e]);
+      }
     }
   }
-  return counts;
+
+  const flex: FlexCover[] = [];
+  const flexRole = new Map<string, string>();
+  if (flexible.size === 0) return { counts, flexRole, flex };
+  for (let d = 0; d < CYCLE_DAYS; d++) {
+    for (const shift of config.shifts) {
+      const candidates = flexible.get(`${d}|${shift.id}`);
+      if (!candidates) continue;
+      for (const role of config.roles) {
+        const required = requiredFor(config, d, shift.id, role.id);
+        const k = cellKey(d, shift.id, role.id);
+        for (const e of candidates) {
+          if ((counts.get(k) ?? 0) >= required) break;
+          if (validSecondary(e, roleIds) !== role.id) continue;
+          const pk = cellKey(d, shift.id, e.roleId);
+          const primary = counts.get(pk) ?? 0;
+          if (primary <= requiredFor(config, d, shift.id, e.roleId)) continue;
+          counts.set(pk, primary - 1);
+          counts.set(k, (counts.get(k) ?? 0) + 1);
+          flexRole.set(`${d}|${shift.id}|${e.id}`, role.id);
+          flex.push({ day: d, shiftId: shift.id, roleId: role.id, employeeId: e.id });
+        }
+      }
+    }
+  }
+  return { counts, flexRole, flex };
 }
 
 export function countGaps(config: StoreConfig, employees: Employee[], schedule: Schedule): number {
-  const counts = baseCounts(employees, schedule);
+  const { counts } = countWithFlex(config, employees, schedule);
   let total = 0;
-  for (const min of config.minimums) {
-    if (!config.shifts.some((s) => s.id === min.shiftId) || !config.roles.some((r) => r.id === min.roleId)) continue;
-    for (let d = 0; d < CYCLE_DAYS; d++) {
-      const wd = weekdayOf(d);
-      if (!config.days[wd]?.open) continue;
-      const required = min.perWeekday[wd] ?? 0;
-      if (required <= 0) continue;
-      total += Math.max(0, required - (counts.get(cellKey(d, min.shiftId, min.roleId)) ?? 0));
+  for (let d = 0; d < CYCLE_DAYS; d++) {
+    for (const shift of config.shifts) {
+      for (const role of config.roles) {
+        const required = requiredFor(config, d, shift.id, role.id);
+        if (required > 0) total += Math.max(0, required - (counts.get(cellKey(d, shift.id, role.id)) ?? 0));
+      }
     }
   }
   return total;
 }
 
 export function computeCoverage({ config, employees, schedule, marks }: CoverageInput): CoverageResult {
-  const counts = baseCounts(employees, schedule);
+  const { counts, flexRole, flex } = countWithFlex(config, employees, schedule);
   const byId = new Map(employees.map((e) => [e.id, e]));
   const shiftById = new Map(config.shifts.map((s) => [s.id, s]));
   const roleIds = new Set(config.roles.map((r) => r.id));
@@ -112,14 +176,15 @@ export function computeCoverage({ config, employees, schedule, marks }: Coverage
     !!config.days[weekdayOf(m.day)]?.open;
 
   // Passo 1 (uma vez só, sem recursão): quem já trabalha no mesmo turno e cobre outra vaga
-  // sai da contagem da própria função naquele dia (KTD16).
+  // sai da contagem da função em que estava contando naquele dia (KTD16): a principal ou, se foi
+  // para a segunda área, a segunda área. A segunda área é aplicada antes das marcações.
   for (const m of marks) {
     if (m.coveredBy.kind !== 'employee' || !targetValid(m)) continue;
     const e = byId.get(m.coveredBy.employeeId);
     if (!e) continue;
     const cell = schedule[e.id]?.[m.day];
     if (cell?.status === 'work' && effectiveShiftId(e, cell) === m.shiftId) {
-      const k = cellKey(m.day, m.shiftId, e.roleId);
+      const k = cellKey(m.day, m.shiftId, flexRole.get(`${m.day}|${m.shiftId}|${e.id}`) ?? e.roleId);
       counts.set(k, Math.max(0, (counts.get(k) ?? 0) - 1));
     }
   }
@@ -185,7 +250,7 @@ export function computeCoverage({ config, employees, schedule, marks }: Coverage
   }
 
   const summary = buildSummary(config, gaps);
-  return { gaps, covered, orphanMarks, extraShifts, summary, headline: buildHeadline(summary) };
+  return { gaps, covered, orphanMarks, extraShifts, flex, summary, headline: buildHeadline(summary) };
 }
 
 /** "à tarde", "de manhã", "à noite"; outros nomes viram "no turno X". */

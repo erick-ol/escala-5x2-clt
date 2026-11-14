@@ -3,6 +3,7 @@ import { gapKey, type Gap } from '../../domain/coverage';
 import { effectiveHours, effectiveShiftId, formatDuration, formatTime, weekdayOf } from '../../domain/time';
 import { DAYS_PER_WEEK, WEEKDAY_NAMES, WEEKDAY_SHORT, type AppDocument, type CoverageMark, type Employee } from '../../domain/types';
 import { alertsInWeek, type Derived } from '../../state/useDerived';
+import { flexFor, flexTag } from '../flex';
 import { dayLabel, employeeName, plural, roleName, shiftInitial, shiftName, shiftTone, shortName } from './labels';
 
 export interface Highlight {
@@ -246,6 +247,7 @@ export function WeekGrid({ week, doc, derived, highlight, onOpenCell, onOpenGap,
               const cell = cells[day];
               const dayAlerts = (report?.alerts ?? []).filter((a) => a.day === day);
               const covering = coverMarks.filter((g) => g.day === day);
+              const flex = cell?.status === 'work' ? flexFor(derived.coverage, employee.id, day) : undefined;
               const isHighlighted = highlight?.employeeId === employee.id && highlight.day === day;
               let label = `${employee.name}, ${dayLabel(day)}: `;
               let body;
@@ -268,6 +270,10 @@ export function WeekGrid({ week, doc, derived, highlight, onOpenCell, onOpenGap,
                 label += `trabalha ${shiftName(config, sid).toLowerCase()}`;
                 if (hours) label += ` ${formatTime(hours.start)}–${formatTime(hours.end)}`;
                 if (cell.hours) label += ', horário ajustado neste dia';
+                if (flex) {
+                  label += `, cobrindo ${roleName(config, flex.roleId)}`;
+                  cls += ' is-flex';
+                }
                 cls += ` wg-work tone-${shiftTone(config, sid)}`;
                 if (sid !== employee.shiftId) cls += ' is-moved';
                 body = (
@@ -281,6 +287,11 @@ export function WeekGrid({ week, doc, derived, highlight, onOpenCell, onOpenGap,
                       </span>
                     )}
                     {cell.hours && <span className="wg-adjusted" aria-hidden="true" />}
+                    {flex && (
+                      <span className="wg-flex" aria-hidden="true">
+                        {flexTag(roleName(config, flex.roleId))}
+                      </span>
+                    )}
                   </>
                 );
               }

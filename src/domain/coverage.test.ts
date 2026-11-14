@@ -266,3 +266,86 @@ describe('cobertura', () => {
     expect(a).not.toBe(gapKey({ day: 1, shiftId: 'tarde', roleId: 'caixa', slot: 1 }));
   });
 });
+
+describe('segunda área (secondaryRoleId)', () => {
+  /** Manhã: 2 caixas (Andreza cobre balcão), 1 balconista. */
+  function flexTeam(): Employee[] {
+    return [
+      { ...emp('andreza', 'caixa', 'manha'), secondaryRoleId: 'balconista' },
+      emp('richard', 'caixa', 'manha'),
+      emp('rosa', 'balconista', 'manha'),
+      emp('joao', 'caixa', 'tarde'),
+      emp('pedro', 'balconista', 'tarde'),
+    ];
+  }
+
+  test('caixa com sobra cobre o balcão quando a balconista folga', () => {
+    const employees = flexTeam();
+    const schedule = scheduleFor(employees, { rosa: [2] });
+    const r = computeCoverage(input({ employees, schedule }));
+    expect(r.gaps).toEqual([]);
+    expect(r.flex).toEqual([{ day: 2, shiftId: 'manha', roleId: 'balconista', employeeId: 'andreza' }]);
+    expect(countGaps(baseConfig(), employees, schedule)).toBe(0);
+  });
+
+  test('sem flex quando a função principal ficaria descoberta', () => {
+    const employees = flexTeam();
+    const schedule = scheduleFor(employees, { rosa: [2], richard: [2] });
+    const r = computeCoverage(input({ employees, schedule }));
+    expect(r.flex).toEqual([]);
+    expect(r.gaps).toEqual([{ day: 2, shiftId: 'manha', roleId: 'balconista', slot: 0 }]);
+    expect(countGaps(baseConfig(), employees, schedule)).toBe(1);
+  });
+
+  test('só no mesmo turno e dia; quem está de folga não cobre', () => {
+    const employees = flexTeam();
+    const schedule = scheduleFor(employees, { pedro: [3], andreza: [4], rosa: [4] });
+    const r = computeCoverage(input({ employees, schedule }));
+    expect(r.flex).toEqual([]);
+    expect(r.gaps.map(gapKey).sort()).toEqual(
+      [
+        gapKey({ day: 3, shiftId: 'tarde', roleId: 'balconista', slot: 0 }),
+        gapKey({ day: 4, shiftId: 'manha', roleId: 'balconista', slot: 0 }),
+      ].sort(),
+    );
+    expect(countGaps(baseConfig(), employees, schedule)).toBe(2);
+  });
+
+  test('segunda área igual à principal ou função inexistente é ignorada', () => {
+    const employees = [
+      { ...emp('andreza', 'caixa', 'manha'), secondaryRoleId: 'caixa' },
+      { ...emp('richard', 'caixa', 'manha'), secondaryRoleId: 'repositor' },
+      emp('rosa', 'balconista', 'manha'),
+    ];
+    const schedule = scheduleFor(employees, { rosa: [2] });
+    const r = computeCoverage(input({ employees, schedule }));
+    expect(r.flex).toEqual([]);
+    expect(r.gaps.filter((g) => g.shiftId === 'manha')).toEqual([{ day: 2, shiftId: 'manha', roleId: 'balconista', slot: 0 }]);
+  });
+
+  test('determinístico pela ordem da equipe: o primeiro elegível cobre', () => {
+    const employees = [
+      emp('richard', 'caixa', 'manha'),
+      { ...emp('andreza', 'caixa', 'manha'), secondaryRoleId: 'balconista' },
+      { ...emp('bia', 'caixa', 'manha'), secondaryRoleId: 'balconista' },
+      emp('rosa', 'balconista', 'manha'),
+    ];
+    const schedule = scheduleFor(employees, { rosa: [5] });
+    const r = computeCoverage(input({ employees, schedule }));
+    expect(r.flex).toEqual([{ day: 5, shiftId: 'manha', roleId: 'balconista', employeeId: 'andreza' }]);
+  });
+
+  test('countGaps concorda com computeCoverage em escalas variadas', () => {
+    const employees = flexTeam();
+    const config = baseConfig();
+    for (let seed = 0; seed < 30; seed++) {
+      const off: Record<string, number[]> = {};
+      employees.forEach((e, i) => {
+        off[e.id] = Array.from({ length: CYCLE_DAYS }, (_, d) => d).filter((d) => (d * 7 + i * 3 + seed) % 5 === 0);
+      });
+      const schedule = scheduleFor(employees, off);
+      const r = computeCoverage({ config, employees, schedule, marks: [] });
+      expect(countGaps(config, employees, schedule), `seed ${seed}`).toBe(r.gaps.length);
+    }
+  });
+});

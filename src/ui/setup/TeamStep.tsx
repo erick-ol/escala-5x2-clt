@@ -74,7 +74,14 @@ export function TeamStep() {
                     id={`emp-role-${e.id}`}
                     className="input"
                     value={e.roleId}
-                    onChange={(ev) => updateEmployee(e.id, { roleId: ev.target.value })}
+                    onChange={(ev) => {
+                      const roleId = ev.target.value;
+                      // A segunda área não pode ser a mesma da função principal.
+                      updateEmployee(
+                        e.id,
+                        e.secondaryRoleId === roleId ? { roleId, secondaryRoleId: undefined } : { roleId },
+                      );
+                    }}
                   >
                     {!config.roles.some((r) => r.id === e.roleId) && <option value="">Escolha</option>}
                     {config.roles.map((r) => (
@@ -101,6 +108,31 @@ export function TeamStep() {
                   </select>
                 </div>
               </div>
+
+              {config.roles.length > 1 && (
+                <div className="field setup-secondary">
+                  <label htmlFor={`emp-second-${e.id}`}>Segunda área (opcional)</label>
+                  <select
+                    id={`emp-second-${e.id}`}
+                    className="input"
+                    value={e.secondaryRoleId ?? ''}
+                    aria-describedby={`emp-second-hint-${e.id}`}
+                    onChange={(ev) => updateEmployee(e.id, { secondaryRoleId: ev.target.value || undefined })}
+                  >
+                    <option value="">Nenhuma</option>
+                    {config.roles
+                      .filter((r) => r.id !== e.roleId)
+                      .map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.name || 'Sem nome'}
+                        </option>
+                      ))}
+                  </select>
+                  <p id={`emp-second-hint-${e.id}`} className="hint">
+                    Cobre essa função quando a principal já estiver completa no turno.
+                  </p>
+                </div>
+              )}
 
               <label className="checkbox">
                 <input

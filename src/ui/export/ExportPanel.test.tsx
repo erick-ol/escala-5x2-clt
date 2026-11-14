@@ -16,10 +16,13 @@ const toBlobMock = vi.mocked(toBlob);
 
 const TODAY = new Date('2026-11-14T12:00:00Z');
 
-/** Exemplo sem o único balconista da tarde: sobra buraco todo dia nesse turno. */
+/**
+ * Exemplo sem o único balconista da tarde: sobra buraco todo dia nesse turno.
+ * Sem segunda área, para o João (caixa, segunda área balconista) não tapar esses buracos.
+ */
 function fixture(): AppDocument {
   const base = exampleDocument(TODAY);
-  const employees = base.employees.filter((e) => e.id !== 'pedro');
+  const employees = base.employees.filter((e) => e.id !== 'pedro').map((e) => ({ ...e, secondaryRoleId: undefined }));
   const schedule = generateSchedule({ config: base.config, employees });
   return {
     ...base,

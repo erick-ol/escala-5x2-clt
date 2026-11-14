@@ -11,6 +11,7 @@ export function ScheduleCellContent({ cell }: { cell: ExportCell }) {
     <>
       <span className="xp-initial">{cell.initial}</span>
       <span className="xp-times mono">{cell.times}</span>
+      {cell.flex && <span className="xp-flex">{cell.flex}</span>}
     </>
   );
 }
@@ -51,6 +52,11 @@ export function PrintSheet({ model }: { model: ExportModel }) {
         <li>
           <span className="xp-missing">✕ Falta</span> = vaga sem ninguém
         </li>
+        {model.rows.some((r) => r.cells.some((c) => c.kind === 'work' && c.flex)) && (
+          <li>
+            <span className="xp-flex">→</span> = cobrindo outra função
+          </li>
+        )}
       </ul>
       <table className="ps-table">
         <thead>

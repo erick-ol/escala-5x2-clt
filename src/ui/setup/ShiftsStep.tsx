@@ -3,7 +3,6 @@ import { defaultBreakFor, formatDuration, formatTime, workedMinutes } from '../.
 import type { Shift } from '../../domain/types';
 import { useAppStore } from '../../state/store';
 import { longestOpenDay, pruneMinimums, randomId, suggestShifts } from './setupLogic';
-import { RegimePicker } from './RegimePicker';
 import { TimeInput } from './TimeInput';
 
 const MAX_SHIFTS = 3;
@@ -47,8 +46,6 @@ export function ShiftsStep() {
       </h2>
       <p className="hint">De 1 a 3 turnos. O site sugere os horários a partir do funcionamento; tudo pode ser ajustado.</p>
 
-      <RegimePicker />
-
       <div className="setup-suggest card">
         <div className="field">
           <label htmlFor="shift-count">Quantos turnos?</label>
@@ -73,7 +70,8 @@ export function ShiftsStep() {
         </button>
         {longest ? (
           <p className="hint">
-            Cada turno tem a jornada do regime ({config.regime === '42h' ? '8h24' : '8h'} + 1h de intervalo), entre{' '}
+            Regime de {config.regime} (escolhido no passo 1): cada turno tem {config.regime === '42h' ? '8h24' : '8h'} + 1h de
+            intervalo, entre{' '}
             {formatTime(longest.opensAt)} e {formatTime(longest.closesAt)}. Se os turnos se sobrepõem, as equipes trabalham
             juntas no meio do dia.
           </p>

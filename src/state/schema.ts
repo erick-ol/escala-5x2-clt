@@ -26,12 +26,14 @@ const config = z.object({
   roles: z.array(role),
   minimums: z.array(minimum),
   regime: z.enum(['42h', '40h']),
+  offPattern: z.enum(['together', 'flexible']).default('together'),
 });
 
 const employee = z.object({
   id: z.string().min(1),
   name: z.string(),
   roleId: z.string(),
+  secondaryRoleId: z.string().optional(),
   shiftId: z.string(),
   isWoman: z.boolean(),
   customHours: workHours.optional(),

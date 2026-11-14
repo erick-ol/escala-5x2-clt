@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { StoreConfig } from '../../domain/types';
 import { appStore } from '../../state/store';
@@ -63,8 +63,9 @@ describe('SetupWizard', () => {
     await user.click(screen.getByRole('button', { name: 'Sugerir turnos' }));
     expect(doc().config.shifts.map((s) => s.id)).toEqual(ids);
 
-    // No regime de 40h, cada turno tem 8h + 1h.
-    await user.click(screen.getByRole('radio', { name: /40h por semana/ }));
+    // No regime de 40h (escolhido no passo 1), cada turno tem 8h + 1h.
+    act(() => setConfig({ regime: '40h' }));
+    expect(screen.getByText(/Regime de 40h \(escolhido no passo 1\)/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Sugerir turnos' }));
     expect(doc().config.shifts.map((s) => [s.start, s.end])).toEqual([
       [h(6, 30), h(15, 30)],
@@ -205,13 +206,76 @@ describe('SetupWizard', () => {
     expect(screen.getByLabelText('Nome da pessoa 1')).toHaveValue('Rosa');
   });
 
-  test('regime começa no padrão do store e pode ser trocado', async () => {
+  test('regime fica no passo 1, começa no padrão do store e pode ser trocado', async () => {
     const user = userEvent.setup();
     seedThroughRoles();
-    render(<SetupWizard onFinish={() => {}} initialStep={1} />);
-    expect(screen.getByRole('radio', { name: /42h por semana/ })).toBeChecked();
-    await user.click(screen.getByRole('radio', { name: /40h por semana/ }));
+    render(<SetupWizard onFinish={() => {}} initialStep={0} />);
+    const rules = screen.getByRole('region', { name: 'Regras da escala' });
+    expect(within(rules).getByText(/40h já cumpre a lei; 42h é o limite da transição \(até 15\/12\/2027\)/)).toBeInTheDocument();
+    expect(within(rules).getByRole('radio', { name: /42h por semana/ })).toBeChecked();
+    await user.click(within(rules).getByRole('radio', { name: /40h por semana/ }));
     expect(doc().config.regime).toBe('40h');
+  });
+
+  test('regime não aparece mais no passo de turnos', () => {
+    seedThroughRoles();
+    render(<SetupWizard onFinish={() => {}} initialStep={1} />);
+    expect(screen.queryByRole('radio', { name: /42h por semana/ })).not.toBeInTheDocument();
+    expect(screen.getByText(/Regime de 42h \(escolhido no passo 1\)/)).toBeInTheDocument();
+  });
+
+  test('folgas: começa em "Juntas" e "Podem ser separadas" grava offPattern flexible', async () => {
+    const user = userEvent.setup();
+    render(<SetupWizard onFinish={() => {}} initialStep={0} />);
+    const together = screen.getByRole('radio', { name: /Juntas sempre que possível/ });
+    expect(together).toBeChecked();
+    expect(screen.getByText('Nunca mais de 2 folgas seguidas nem mais de 6 dias seguidos de trabalho.')).toBeInTheDocument();
+    await user.click(screen.getByRole('radio', { name: /Podem ser separadas/ }));
+    expect(doc().config.offPattern).toBe('flexible');
+    await user.click(together);
+    expect(doc().config.offPattern).toBe('together');
+  });
+
+  test('segunda área: lista as outras funções, grava secondaryRoleId e limpa se virar a função principal', async () => {
+    const user = userEvent.setup();
+    seedThroughRoles();
+    setConfig({
+      roles: [
+        { id: 'caixa', name: 'Caixa' },
+        { id: 'balconista', name: 'Balconista' },
+      ],
+    });
+    appStore.getState().addEmployee({ id: 'ana', name: 'Ana', roleId: 'caixa', shiftId: 'manha', isWoman: false });
+    render(<SetupWizard onFinish={() => {}} initialStep={3} />);
+
+    const select = screen.getByLabelText('Segunda área (opcional)');
+    expect(select).toHaveValue('');
+    const options = within(select).getAllByRole('option').map((o) => o.textContent);
+    expect(options).toEqual(['Nenhuma', 'Balconista']);
+    expect(screen.getByText('Cobre essa função quando a principal já estiver completa no turno.')).toBeInTheDocument();
+
+    await user.selectOptions(select, 'balconista');
+    expect(doc().employees[0].secondaryRoleId).toBe('balconista');
+
+    // Função principal passa a ser Balconista: a segunda área igual é apagada e a lista troca.
+    await user.selectOptions(screen.getByLabelText('Função'), 'balconista');
+    expect(doc().employees[0].roleId).toBe('balconista');
+    expect(doc().employees[0].secondaryRoleId).toBeUndefined();
+    expect(within(screen.getByLabelText('Segunda área (opcional)')).getAllByRole('option').map((o) => o.textContent)).toEqual([
+      'Nenhuma',
+      'Caixa',
+    ]);
+
+    await user.selectOptions(screen.getByLabelText('Segunda área (opcional)'), 'caixa');
+    await user.selectOptions(screen.getByLabelText('Segunda área (opcional)'), '');
+    expect(doc().employees[0].secondaryRoleId).toBeUndefined();
+  });
+
+  test('segunda área fica escondida com uma só função', () => {
+    seedThroughRoles();
+    appStore.getState().addEmployee({ id: 'ana', name: 'Ana', roleId: 'balconista', shiftId: 'manha', isWoman: false });
+    render(<SetupWizard onFinish={() => {}} initialStep={3} />);
+    expect(screen.queryByLabelText('Segunda área (opcional)')).not.toBeInTheDocument();
   });
 
   test('aviso aparece quando a escala já foi gerada', () => {

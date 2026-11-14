@@ -8,128 +8,215 @@ export interface GenerateInput {
 
 const MIN_REST_DAYS_PER_WEEK = 2;
 const MAX_PASSES = 50;
-/** Peso de um buraco frente a um par de folgas consecutivas (buraco sempre domina). */
-const GAP_WEIGHT = 1000;
-
-const groupKey = (shiftId: string, roleId: string) => `${shiftId}|${roleId}`;
+/** No máximo 2 dias seguidos de descanso com folga atribuída (loja fechada sozinha não conta). */
+const MAX_REST_RUN = 2;
+/** No máximo 6 dias seguidos de trabalho (circular). */
+const MAX_WORK_RUN = 6;
+/** Sequência de trabalho a partir da qual o gerador começa a penalizar (regra suave). */
+const COMFORT_WORK_RUN = 5;
 
 /**
- * Estado do gerador (KTD6): folgas por pessoa, contagem de quem trabalha por grupo (turno × função) e dia,
- * e o mínimo exigido. Buracos são recalculados só no delta de cada movimento.
+ * Pesos do objetivo (menor é melhor), em ordem de prioridade:
+ * restrições (descansos/trabalho seguidos) ≫ buracos ≫ preferências (pares de folga, sequências longas).
+ */
+const VIOLATION_WEIGHT = 1_000_000;
+const GAP_WEIGHT = 1000;
+/** 'together': cada par de dias de descanso seguidos vale isto. */
+const PAIR_REWARD = 10;
+/** 'flexible': cada par de dias de descanso seguidos custa isto (espalha as folgas). */
+const PAIR_PENALTY = 2;
+/** Cada dia de trabalho seguido acima de COMFORT_WORK_RUN custa isto. */
+const STREAK_PENALTY = 1;
+
+/**
+ * Estado do gerador (KTD6). Cada pessoa (as que o gerador mexe e as linhas fixas do fitEmployee) tem,
+ * por dia, o índice do turno em que trabalha (-1 = não trabalha). Os buracos de um dia/turno são
+ * recalculados a partir de quem trabalha nele, com a mesma regra de segunda área da cobertura
+ * (coverage.ts): para cada função com falta, na ordem das funções, quem tem essa segunda área e cuja
+ * principal está com sobra passa a contar nela, na ordem da equipe.
+ *
+ * Interpretação das restrições (ciclo circular de 21 dias, atravessando as semanas):
+ * - descanso = folga ('off') ou loja fechada ('closed'); uma sequência de descanso que contém ao menos
+ *   uma folga atribuída não pode passar de 2 dias. Sequências só de loja fechada não contam contra a pessoa
+ *   (a pessoa não escolheu), mas uma folga colada a elas soma (ex.: sábado de folga + domingo fechado = 2,
+ *   ok; + segunda de folga = 3, não);
+ * - nunca mais de 6 dias seguidos de trabalho.
+ * São tratadas como restrições muito pesadas: se forem impossíveis para alguém, o gerador entrega a melhor
+ * escala que encontrar em vez de falhar.
  */
 class Solver {
   readonly open: boolean[];
   readonly sundayOpen: boolean;
   /** Folgas a atribuir por semana (KTD14): 2 menos os dias de loja fechada. */
   readonly offsPerWeek: number;
-  private readonly required = new Map<string, number[]>();
-  private readonly counts = new Map<string, number[]>();
-  /** off[i][d] para as pessoas que o gerador pode mexer. */
+  readonly together: boolean;
+  /** Índice da função principal de cada pessoa (funções fora da configuração ganham índices extras). */
+  private readonly role: number[];
+  /** Índice da segunda área válida (-1 se não houver). */
+  private readonly secondary: number[];
+  /** Índice do turno do cadastro (-1 se o turno não existe). */
+  private readonly home: number[];
+  /** req[s][r][d]: mínimo exigido; funções extras têm 0. */
+  private readonly req: number[][][];
+  /** cnt[s][r][d]: pessoas da função principal r trabalhando no turno s no dia d. */
+  private readonly cnt: number[][][];
+  /** at[k][d]: turno em que a pessoa k trabalha no dia d (-1 = não trabalha). */
+  private readonly at: number[][];
+  /** Pessoas que podem aparecer em cada turno, na ordem da equipe. */
+  private readonly members: number[][];
+  private readonly nRoles: number;
+  private readonly scratch: number[];
+  /** off[k][d] para as pessoas que o gerador mexe. */
   readonly off: boolean[][];
-  readonly keys: string[];
 
   constructor(
     readonly config: StoreConfig,
-    readonly people: Employee[],
+    /** Equipe inteira, na ordem da cobertura. */
+    readonly all: Employee[],
+    /** Linha fixa de cada pessoa (null = o gerador escolhe as folgas). */
+    fixed: (Cell[] | null)[],
   ) {
     this.open = Array.from({ length: CYCLE_DAYS }, (_, d) => !!config.days[weekdayOf(d)]?.open);
     this.sundayOpen = !!config.days[SUNDAY]?.open;
+    this.together = config.offPattern !== 'flexible';
     let closedPerWeek = 0;
     for (let w = 0; w < DAYS_PER_WEEK; w++) if (!config.days[w]?.open) closedPerWeek++;
     this.offsPerWeek = Math.max(0, MIN_REST_DAYS_PER_WEEK - closedPerWeek);
 
-    const shiftIds = new Set(config.shifts.map((s) => s.id));
-    const roleIds = new Set(config.roles.map((r) => r.id));
+    const shiftIndex = new Map(config.shifts.map((s, i) => [s.id, i]));
+    const roleIndex = new Map(config.roles.map((r, i) => [r.id, i]));
+    const nCfgRoles = config.roles.length;
+    this.role = all.map((e) => {
+      let r = roleIndex.get(e.roleId);
+      if (r === undefined) {
+        r = roleIndex.size;
+        roleIndex.set(e.roleId, r);
+      }
+      return r;
+    });
+    this.secondary = all.map((e, k) => {
+      const r = e.secondaryRoleId === undefined ? undefined : roleIndex.get(e.secondaryRoleId);
+      return r !== undefined && r < nCfgRoles && r !== this.role[k] ? r : -1;
+    });
+    this.nRoles = roleIndex.size;
+    this.scratch = Array.from({ length: this.nRoles }, () => 0);
+    this.home = all.map((e) => shiftIndex.get(e.shiftId) ?? -1);
+
+    const zeros = () => Array.from({ length: CYCLE_DAYS }, () => 0);
+    this.req = config.shifts.map(() => Array.from({ length: this.nRoles }, zeros));
+    this.cnt = config.shifts.map(() => Array.from({ length: this.nRoles }, zeros));
+    const seen = new Set<string>();
     for (const m of config.minimums) {
-      if (!shiftIds.has(m.shiftId) || !roleIds.has(m.roleId)) continue;
-      const k = groupKey(m.shiftId, m.roleId);
-      if (this.required.has(k)) continue;
-      this.required.set(
-        k,
-        Array.from({ length: CYCLE_DAYS }, (_, d) => (this.open[d] ? Math.max(0, m.perWeekday[weekdayOf(d)] ?? 0) : 0)),
-      );
+      const s = shiftIndex.get(m.shiftId);
+      const r = roleIndex.get(m.roleId);
+      if (s === undefined || r === undefined || r >= nCfgRoles) continue;
+      const key = `${s}|${r}`;
+      if (seen.has(key)) continue; // vale o primeiro mínimo, como na cobertura
+      seen.add(key);
+      for (let d = 0; d < CYCLE_DAYS; d++) {
+        this.req[s][r][d] = this.open[d] ? Math.max(0, m.perWeekday[weekdayOf(d)] ?? 0) : 0;
+      }
     }
 
-    this.keys = people.map((e) => groupKey(e.shiftId, e.roleId));
-    this.off = people.map(() => Array.from({ length: CYCLE_DAYS }, () => false));
-    // Todos começam trabalhando todos os dias abertos.
-    people.forEach((_, i) => {
-      for (let d = 0; d < CYCLE_DAYS; d++) if (this.open[d]) this.bump(this.keys[i], d, 1);
+    this.off = all.map(() => Array.from({ length: CYCLE_DAYS }, () => false));
+    this.at = all.map((e, k) => {
+      const row = fixed[k];
+      return Array.from({ length: CYCLE_DAYS }, (_, d) => {
+        if (row === null) return this.open[d] ? this.home[k] : -1; // todos começam trabalhando nos dias abertos
+        const cell = row[d];
+        return cell?.status === 'work' ? (shiftIndex.get(effectiveShiftId(e, cell)) ?? -1) : -1;
+      });
+    });
+    this.members = config.shifts.map((_, s) => all.map((_, k) => k).filter((k) => this.at[k].includes(s) || this.home[k] === s));
+    all.forEach((_, k) => {
+      for (let d = 0; d < CYCLE_DAYS; d++) {
+        const s = this.at[k][d];
+        if (s >= 0) this.cnt[s][this.role[k]][d]++;
+      }
     });
   }
 
-  private countsFor(key: string): number[] {
-    let c = this.counts.get(key);
-    if (!c) {
-      c = Array.from({ length: CYCLE_DAYS }, () => 0);
-      this.counts.set(key, c);
+  /** Buracos no turno s do dia d, com a segunda área aplicada (mesma regra de coverage.ts). */
+  gapAt(s: number, d: number): number {
+    if (s < 0) return 0;
+    const req = this.req[s];
+    const c = this.scratch;
+    for (let r = 0; r < this.nRoles; r++) c[r] = this.cnt[s][r][d];
+    const members = this.members[s];
+    let missing = 0;
+    for (let r = 0; r < this.config.roles.length; r++) {
+      const need = req[r][d];
+      if (c[r] >= need) continue;
+      for (const k of members) {
+        if (c[r] >= need) break;
+        if (this.secondary[k] !== r || this.at[k][d] !== s) continue;
+        const p = this.role[k];
+        if (c[p] <= req[p][d]) continue;
+        c[p]--;
+        c[r]++;
+      }
+      missing += need - c[r];
     }
-    return c;
+    return missing;
   }
 
-  bump(key: string, day: number, delta: number): void {
-    this.countsFor(key)[day] += delta;
-  }
-
-  /** Linhas fixas (fitEmployee): entram só na contagem. */
-  addFixedRow(employee: Employee, row: Cell[]): void {
-    for (let d = 0; d < CYCLE_DAYS; d++) {
-      const cell = row[d];
-      if (cell?.status === 'work') this.bump(groupKey(effectiveShiftId(employee, cell), employee.roleId), d, 1);
-    }
-  }
-
-  private req(key: string, day: number): number {
-    return this.required.get(key)?.[day] ?? 0;
-  }
-
-  /** Buracos a mais se uma pessoa do grupo deixar de trabalhar no dia. */
-  lossIfOff(key: string, day: number): number {
-    return this.countsFor(key)[day] <= this.req(key, day) ? 1 : 0;
-  }
-
-  /** Buracos a menos se uma pessoa do grupo passar a trabalhar no dia. */
-  gainIfWork(key: string, day: number): number {
-    return this.countsFor(key)[day] < this.req(key, day) ? 1 : 0;
-  }
-
-  surplus(key: string, day: number): number {
-    return this.countsFor(key)[day] - this.req(key, day);
-  }
-
-  isRest(i: number, day: number): boolean {
-    const d = ((day % CYCLE_DAYS) + CYCLE_DAYS) % CYCLE_DAYS;
-    return !this.open[d] || this.off[i][d];
-  }
-
-  setOff(i: number, day: number, value: boolean): void {
-    if (this.off[i][day] === value) return;
-    this.off[i][day] = value;
-    this.bump(this.keys[i], day, value ? -1 : 1);
-  }
-
-  /** Pares de dias sem trabalho seguidos, no ciclo circular (KTD5, KTD7). */
-  pairScore(i: number): number {
+  /** Buracos do turno s nos dias [from, to). */
+  gapsIn(s: number, from: number, to: number): number {
     let n = 0;
-    for (let d = 0; d < CYCLE_DAYS; d++) if (this.isRest(i, d) && this.isRest(i, d + 1)) n++;
+    for (let d = from; d < to; d++) n += this.gapAt(s, d);
     return n;
   }
 
-  sundaysOff(i: number): boolean[] {
-    return Array.from({ length: WEEKS }, (_, w) => this.off[i][w * DAYS_PER_WEEK + SUNDAY]);
+  /** Buracos a mais (ou a menos, se negativo) se a pessoa k inverter folga/trabalho no dia d. */
+  toggleDelta(k: number, d: number): number {
+    const s = this.home[k];
+    if (s < 0) return 0;
+    const before = this.gapAt(s, d);
+    this.setOff(k, d, !this.off[k][d]);
+    const after = this.gapAt(s, d);
+    this.setOff(k, d, !this.off[k][d]);
+    return after - before;
   }
 
-  /** R10/R10a: 1 domingo de folga no ciclo; mulheres nunca 2 domingos trabalhados seguidos (circular). */
-  sundayOk(i: number): boolean {
-    if (!this.sundayOpen) return true;
-    const off = this.sundaysOff(i);
-    if (this.people[i].isWoman) return off.every((o, w) => o || off[(w + WEEKS - 1) % WEEKS]);
-    return off.some(Boolean);
+  /** Sobra da função principal da pessoa no turno do cadastro (desempate). */
+  surplus(k: number, d: number): number {
+    const s = this.home[k];
+    if (s < 0) return 0;
+    const r = this.role[k];
+    return this.cnt[s][r][d] - this.req[s][r][d];
   }
 
-  offsIn(i: number, week: number): number {
+  isRest(k: number, day: number): boolean {
+    const d = ((day % CYCLE_DAYS) + CYCLE_DAYS) % CYCLE_DAYS;
+    return !this.open[d] || this.off[k][d];
+  }
+
+  setOff(k: number, day: number, value: boolean): void {
+    if (this.off[k][day] === value || !this.open[day]) return;
+    this.off[k][day] = value;
+    const s = this.home[k];
+    this.at[k][day] = value ? -1 : s;
+    if (s >= 0) this.cnt[s][this.role[k]][day] += value ? -1 : 1;
+  }
+
+  /** Sequência de descanso que contém o dia d tem folga e passa de 2 dias? */
+  restRunTooLong(k: number, d: number): boolean {
+    let len = 1;
+    let hasOff = this.off[k][d];
+    for (let j = 1; j < CYCLE_DAYS && this.isRest(k, d - j); j++) {
+      len++;
+      if (this.off[k][(d - j + CYCLE_DAYS) % CYCLE_DAYS]) hasOff = true;
+    }
+    for (let j = 1; j < CYCLE_DAYS && this.isRest(k, d + j); j++) {
+      len++;
+      if (this.off[k][(d + j) % CYCLE_DAYS]) hasOff = true;
+    }
+    return hasOff && len > MAX_REST_RUN;
+  }
+
+  offsIn(k: number, week: number): number {
     let n = 0;
-    for (let d = week * DAYS_PER_WEEK; d < (week + 1) * DAYS_PER_WEEK; d++) if (this.off[i][d]) n++;
+    for (let d = week * DAYS_PER_WEEK; d < (week + 1) * DAYS_PER_WEEK; d++) if (this.off[k][d]) n++;
     return n;
   }
 
@@ -138,32 +225,28 @@ class Solver {
   assignSundays(order: number[]): void {
     if (!this.sundayOpen) return;
     const sundayOffsByGroup = new Map<string, number[]>();
-    const sorted = [...order].sort((a, b) => Number(this.people[b].isWoman) - Number(this.people[a].isWoman) || a - b);
-    for (const i of sorted) {
-      const key = this.keys[i];
+    const sorted = [...order].sort((a, b) => Number(this.all[b].isWoman) - Number(this.all[a].isWoman) || a - b);
+    for (const k of sorted) {
+      const key = `${this.home[k]}|${this.role[k]}`;
       let perWeek = sundayOffsByGroup.get(key);
       if (!perWeek) {
         perWeek = Array.from({ length: WEEKS }, () => 0);
         sundayOffsByGroup.set(key, perWeek);
       }
-      const need = this.people[i].isWoman ? 2 : 1;
+      const need = this.all[k].isWoman ? 2 : 1;
       const weeks = Array.from({ length: WEEKS }, (_, w) => w);
       for (let n = 0; n < need; n++) {
         const pw = perWeek;
-        const best = weeks
-          .filter((w) => !this.off[i][w * DAYS_PER_WEEK + SUNDAY])
-          .sort((a, b) => {
-            const da = a * DAYS_PER_WEEK + SUNDAY;
-            const db = b * DAYS_PER_WEEK + SUNDAY;
-            return (
-              this.lossIfOff(key, da) - this.lossIfOff(key, db) ||
-              pw[a] - pw[b] ||
-              this.surplus(key, db) - this.surplus(key, da) ||
-              a - b
-            );
-          })[0];
+        const scored = weeks
+          .filter((w) => !this.off[k][w * DAYS_PER_WEEK + SUNDAY])
+          .map((w) => {
+            const d = w * DAYS_PER_WEEK + SUNDAY;
+            return { w, score: [this.toggleDelta(k, d), pw[w], -this.surplus(k, d), w] };
+          });
+        scored.sort((a, b) => (lexLess(a.score, b.score) ? -1 : lexLess(b.score, a.score) ? 1 : 0));
+        const best = scored[0]?.w;
         if (best === undefined) break;
-        this.setOff(i, best * DAYS_PER_WEEK + SUNDAY, true);
+        this.setOff(k, best * DAYS_PER_WEEK + SUNDAY, true);
         pw[best]++;
       }
     }
@@ -173,70 +256,160 @@ class Solver {
 
   fillWeeks(order: number[]): void {
     for (let w = 0; w < WEEKS; w++) {
-      for (const i of order) {
-        const key = this.keys[i];
-        while (this.offsIn(i, w) < this.offsPerWeek) {
+      for (const k of order) {
+        while (this.offsIn(k, w) < this.offsPerWeek) {
           let bestDay = -1;
           let bestScore: number[] = [];
           for (let d = w * DAYS_PER_WEEK; d < (w + 1) * DAYS_PER_WEEK; d++) {
-            if (!this.open[d] || this.off[i][d]) continue;
-            const adjacent = Number(this.isRest(i, d - 1)) + Number(this.isRest(i, d + 1));
-            const score = [this.lossIfOff(key, d), -adjacent, -this.surplus(key, d), d];
+            if (!this.open[d] || this.off[k][d]) continue;
+            const adjacent = Number(this.isRest(k, d - 1)) + Number(this.isRest(k, d + 1));
+            const gap = this.toggleDelta(k, d);
+            this.setOff(k, d, true);
+            const tooLong = Number(this.restRunTooLong(k, d));
+            this.setOff(k, d, false);
+            const score = [tooLong, gap, this.together ? -adjacent : adjacent, -this.surplus(k, d), d];
             if (bestDay < 0 || lexLess(score, bestScore)) {
               bestDay = d;
               bestScore = score;
             }
           }
           if (bestDay < 0) break;
-          this.setOff(i, bestDay, true);
+          this.setOff(k, bestDay, true);
         }
       }
     }
   }
 
-  // ---- Etapa 3: melhoria local, movendo uma folga dentro da semana ----
+  // ---- Etapa 3: melhoria local, reescolhendo as folgas das 3 semanas de uma pessoa por vez ----
 
+  /**
+   * Para cada pessoa (as outras fixas), testa todas as combinações de folgas das 3 semanas (mantendo
+   * quantas folgas cada semana tem) e fica com a de menor custo. Os buracos de uma semana só dependem
+   * das folgas daquela semana, então são calculados uma vez por combinação semanal; restrições e
+   * preferências da linha inteira são avaliadas com máscaras de bits. Repete até não melhorar mais.
+   */
   improve(order: number[]): void {
+    const closedMask = maskOf((d) => !this.open[d]);
     for (let pass = 0; pass < MAX_PASSES; pass++) {
       let improved = false;
-      for (const i of order) {
-        const key = this.keys[i];
-        for (let from = 0; from < CYCLE_DAYS; from++) {
-          if (!this.off[i][from]) continue;
-          const week = Math.floor(from / DAYS_PER_WEEK);
-          const basePairs = this.pairScore(i);
-          let best: { to: number; value: number } | null = null;
-          for (let to = week * DAYS_PER_WEEK; to < (week + 1) * DAYS_PER_WEEK; to++) {
-            if (to === from || !this.open[to] || this.off[i][to]) continue;
-            // Delta de buracos: volta a trabalhar em `from`, folga em `to`.
-            const gain = this.gainIfWork(key, from);
-            this.setOff(i, from, false);
-            const loss = this.lossIfOff(key, to);
-            this.setOff(i, to, true);
-            const ok = this.sundayOk(i);
-            const pairs = this.pairScore(i);
-            this.setOff(i, to, false);
-            this.setOff(i, from, true);
-            if (!ok) continue;
-            const value = (gain - loss) * GAP_WEIGHT + (pairs - basePairs);
-            if (value > 0 && (!best || value > best.value)) best = { to, value };
+      for (const k of order) {
+        const s = this.home[k];
+        const options: { offs: number[]; mask: number; gaps: number }[][] = [];
+        const current: number[][] = [];
+        for (let w = 0; w < WEEKS; w++) {
+          const days: number[] = [];
+          const now: number[] = [];
+          for (let d = w * DAYS_PER_WEEK; d < (w + 1) * DAYS_PER_WEEK; d++) {
+            if (!this.open[d]) continue;
+            days.push(d);
+            if (this.off[k][d]) now.push(d);
           }
-          if (best) {
-            this.setOff(i, from, false);
-            this.setOff(i, best.to, true);
-            improved = true;
+          current.push(now);
+          options.push(
+            combinations(days, now.length).map((offs) => {
+              this.applyWeek(k, w, offs);
+              const gaps = this.gapsIn(s, w * DAYS_PER_WEEK, (w + 1) * DAYS_PER_WEEK);
+              return { offs, mask: offs.reduce((m, d) => m | (1 << d), 0), gaps };
+            }),
+          );
+          this.applyWeek(k, w, now);
+        }
+
+        const isWoman = this.all[k].isWoman;
+        const currentMask = current.flat().reduce((m, d) => m | (1 << d), 0);
+        const currentGaps = options.reduce((sum, opts, w) => sum + (opts.find((o) => sameSet(o.offs, current[w]))?.gaps ?? 0), 0);
+        // Se a linha atual já fere o rodízio de domingo (não deveria), não o exige das alternativas.
+        const checkSunday = this.sundayOpen && sundayRuleOk(currentMask, isWoman);
+        const costOf = (offMask: number, gaps: number): number => {
+          if (checkSunday && !sundayRuleOk(offMask, isWoman)) return Infinity;
+          const { violations, soft } = maskCost(offMask, closedMask, this.together);
+          return violations * VIOLATION_WEIGHT + gaps * GAP_WEIGHT + soft;
+        };
+        let bestCost = costOf(currentMask, currentGaps);
+        let best: number[][] | null = null;
+        for (const a of options[0]) {
+          for (const b of options[1]) {
+            const ab = a.mask | b.mask;
+            const gab = a.gaps + b.gaps;
+            for (const c of options[2]) {
+              const value = costOf(ab | c.mask, gab + c.gaps);
+              if (value < bestCost) {
+                bestCost = value;
+                best = [a.offs, b.offs, c.offs];
+              }
+            }
           }
+        }
+        if (best) {
+          best.forEach((offs, w) => this.applyWeek(k, w, offs));
+          improved = true;
         }
       }
       if (!improved) break;
     }
   }
 
-  row(i: number): Cell[] {
+  private applyWeek(k: number, w: number, offs: number[]): void {
+    for (let d = w * DAYS_PER_WEEK; d < (w + 1) * DAYS_PER_WEEK; d++) this.setOff(k, d, offs.includes(d));
+  }
+
+  row(k: number): Cell[] {
     return Array.from({ length: CYCLE_DAYS }, (_, d) => ({
-      status: !this.open[d] ? 'closed' : this.off[i][d] ? 'off' : 'work',
+      status: !this.open[d] ? 'closed' : this.off[k][d] ? 'off' : 'work',
     }));
   }
+}
+
+const FULL_MASK = (1 << CYCLE_DAYS) - 1;
+const SUNDAY_BITS = Array.from({ length: WEEKS }, (_, w) => 1 << (w * DAYS_PER_WEEK + SUNDAY));
+
+function maskOf(pred: (d: number) => boolean): number {
+  let m = 0;
+  for (let d = 0; d < CYCLE_DAYS; d++) if (pred(d)) m |= 1 << d;
+  return m;
+}
+
+/** Bit d do resultado = bit (d + n) do ciclo circular. */
+function ahead(x: number, n: number): number {
+  return ((x >>> n) | (x << (CYCLE_DAYS - n))) & FULL_MASK;
+}
+
+function popcount(x: number): number {
+  let n = 0;
+  for (let v = x; v; v &= v - 1) n++;
+  return n;
+}
+
+/** Bit d = os `len` dias a partir de d estão todos em `x` (circular). */
+function windows(x: number, len: number): number {
+  let w = x;
+  for (let j = 1; j < len; j++) w &= ahead(x, j);
+  return w;
+}
+
+/**
+ * Custo da linha a partir das máscaras de folga e de loja fechada (circular):
+ * - violações: janelas de 3 dias de descanso que contêm folga (uma sequência de L dias com folga dá L-2)
+ *   mais janelas de 7 dias de trabalho (L-6);
+ * - preferência: pares de descanso seguidos (prêmio em 'together', custo em 'flexible') e
+ *   dias de trabalho seguidos acima de 5.
+ */
+function maskCost(offMask: number, closedMask: number, together: boolean): { violations: number; soft: number } {
+  const rest = offMask | closedMask;
+  const work = ~rest & FULL_MASK;
+  const restWithOff = windows(rest, MAX_REST_RUN + 1) & (offMask | ahead(offMask, 1) | ahead(offMask, 2));
+  const violations = popcount(restWithOff) + popcount(windows(work, MAX_WORK_RUN + 1));
+  const pairs = popcount(rest & ahead(rest, 1));
+  const streak = popcount(windows(work, COMFORT_WORK_RUN + 1));
+  const pairCost = together ? -PAIR_REWARD * pairs : PAIR_PENALTY * pairs;
+  return { violations, soft: pairCost + STREAK_PENALTY * streak };
+}
+
+/** R10/R10a pela máscara de folgas: 1 domingo de folga no ciclo; mulheres nunca 2 domingos trabalhados seguidos. */
+function sundayRuleOk(offMask: number, isWoman: boolean): boolean {
+  const off = SUNDAY_BITS.map((b) => (offMask & b) !== 0);
+  if (isWoman) return off.every((o, w) => o || off[(w + WEEKS - 1) % WEEKS]);
+  return off.some(Boolean);
 }
 
 function lexLess(a: number[], b: number[]): boolean {
@@ -244,13 +417,46 @@ function lexLess(a: number[], b: number[]): boolean {
   return false;
 }
 
-/** Determinístico: mesma entrada → mesma escala. Devolve a escala inteira (21 células por pessoa). */
-export function generateSchedule(input: GenerateInput): Schedule {
-  const solver = new Solver(input.config, input.employees);
-  const order = input.employees.map((_, i) => i);
+function sameSet(a: number[], b: number[]): boolean {
+  return a.length === b.length && a.every((x, i) => x === b[i]);
+}
+
+/** Subconjuntos de `size` elementos, em ordem lexicográfica (determinístico). */
+function combinations(items: number[], size: number): number[][] {
+  const out: number[][] = [];
+  const pick: number[] = [];
+  const rec = (start: number) => {
+    if (pick.length === size) {
+      out.push([...pick]);
+      return;
+    }
+    for (let i = start; i <= items.length - (size - pick.length); i++) {
+      pick.push(items[i]);
+      rec(i + 1);
+      pick.pop();
+    }
+  };
+  rec(0);
+  return out;
+}
+
+function solve(solver: Solver, order: number[]): void {
   solver.assignSundays(order);
   solver.fillWeeks(order);
   solver.improve(order);
+}
+
+/** Determinístico: mesma entrada → mesma escala. Devolve a escala inteira (21 células por pessoa). */
+export function generateSchedule(input: GenerateInput): Schedule {
+  const solver = new Solver(
+    input.config,
+    input.employees,
+    input.employees.map(() => null),
+  );
+  solve(
+    solver,
+    input.employees.map((_, i) => i),
+  );
   const schedule: Schedule = {};
   input.employees.forEach((e, i) => {
     schedule[e.id] = solver.row(i);
@@ -260,16 +466,14 @@ export function generateSchedule(input: GenerateInput): Schedule {
 
 /** Encaixa uma pessoa (nova) numa escala existente sem mudar as outras linhas. */
 export function fitEmployee(input: GenerateInput & { schedule: Schedule }, employeeId: string): Cell[] {
-  const employee = input.employees.find((e) => e.id === employeeId);
-  const solver = new Solver(input.config, employee ? [employee] : []);
-  if (!employee) return Array.from({ length: CYCLE_DAYS }, (_, d) => ({ status: solver.open[d] ? 'work' : 'closed' }));
-  for (const other of input.employees) {
-    if (other.id === employeeId) continue;
-    const row = input.schedule[other.id];
-    if (row) solver.addFixedRow(other, row);
+  const index = input.employees.findIndex((e) => e.id === employeeId);
+  if (index < 0) {
+    const open = Array.from({ length: CYCLE_DAYS }, (_, d) => !!input.config.days[weekdayOf(d)]?.open);
+    return open.map((o): Cell => ({ status: o ? 'work' : 'closed' }));
   }
-  solver.assignSundays([0]);
-  solver.fillWeeks([0]);
-  solver.improve([0]);
-  return solver.row(0);
+  // Quem não tem linha na escala não conta (linha vazia).
+  const fixed = input.employees.map((e, i) => (i === index ? null : (input.schedule[e.id] ?? [])));
+  const solver = new Solver(input.config, input.employees, fixed);
+  solve(solver, [index]);
+  return solver.row(index);
 }

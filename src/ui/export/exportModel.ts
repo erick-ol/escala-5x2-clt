@@ -1,4 +1,5 @@
 import { computeCoverage } from '../../domain/coverage';
+import { flexFor, flexTag } from '../flex';
 import { effectiveHours, effectiveShiftId, formatTime } from '../../domain/time';
 import { CYCLE_DAYS, type AppDocument, type Shift, type WorkHours } from '../../domain/types';
 
@@ -7,7 +8,13 @@ import { CYCLE_DAYS, type AppDocument, type Shift, type WorkHours } from '../../
  * Nunca inclui alertas internos nem a marcação "Funcionária mulher" (R5a).
  */
 export type ExportCell =
-  | { kind: 'work'; initial: string; times: string }
+  | {
+      kind: 'work';
+      initial: string;
+      times: string;
+      /** Marcador "→ Balc." quando a pessoa cobre outra função (segunda área) neste dia. */
+      flex?: string;
+    }
   | { kind: 'off' }
   | { kind: 'closed' };
 
@@ -86,6 +93,8 @@ export function buildExportModel(document: AppDocument): ExportModel {
     return { storeName: displayStoreName(document), hasSchedule: false, legend, rows: [], gapRows: [] };
   }
 
+  const coverage = computeCoverage({ config, employees, schedule, marks });
+
   const rows: ExportRow[] = employees.map((e) => {
     const row = schedule[e.id] ?? [];
     const cells: ExportCell[] = Array.from({ length: CYCLE_DAYS }, (_, day) => {
@@ -93,16 +102,17 @@ export function buildExportModel(document: AppDocument): ExportModel {
       if (!cell || cell.status === 'closed') return { kind: 'closed' };
       if (cell.status === 'off') return { kind: 'off' };
       const hours = effectiveHours(config, e, cell);
+      const flex = flexFor(coverage, e.id, day);
       return {
         kind: 'work',
         initial: initials.get(effectiveShiftId(e, cell)) ?? '?',
         times: hours ? formatRange(hours) : '',
+        ...(flex ? { flex: flexTag(roleName.get(flex.roleId) ?? '') } : {}),
       };
     });
     return { id: e.id, name: e.name, roleName: roleName.get(e.roleId) ?? '', cells };
   });
 
-  const coverage = computeCoverage({ config, employees, schedule, marks });
   const all = [
     ...coverage.gaps.map((g) => ({ gap: g, cell: { kind: 'missing', label: MISSING_LABEL } as GapCell })),
     ...coverage.covered.map((c) => ({

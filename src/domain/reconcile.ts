@@ -1,6 +1,6 @@
 import { fitEmployee } from './generator';
 import { weekdayOf } from './time';
-import type { AppDocument, Cell, Schedule } from './types';
+import type { AppDocument, Cell, Employee, Schedule } from './types';
 
 /**
  * Deixa a escala coerente com a configuração atual. Roda ao carregar, ao restaurar um backup
@@ -11,12 +11,24 @@ import type { AppDocument, Cell, Schedule } from './types';
  * - Dia que passou a ser aberto deixa de ser "loja fechada": a linha da pessoa é reencaixada pelo gerador.
  * - Ajustes de turno que apontam para um turno que não existe mais são descartados.
  * - Marcações de quem saiu da equipe, ou de turno/função removidos, são descartadas.
+ * - Segunda área que aponta para função removida, ou igual à função principal, é descartada.
  */
 export function reconcileDocument(doc: AppDocument): AppDocument {
-  const { config, employees } = doc;
+  const { config } = doc;
   const shiftIds = new Set(config.shifts.map((s) => s.id));
   const roleIds = new Set(config.roles.map((r) => r.id));
-  const employeeIds = new Set(employees.map((e) => e.id));
+  const employeeIds = new Set(doc.employees.map((e) => e.id));
+
+  let employeesChanged = false;
+  const employees = doc.employees.map((e): Employee => {
+    if (e.secondaryRoleId === undefined) return e;
+    if (e.secondaryRoleId !== e.roleId && roleIds.has(e.secondaryRoleId)) return e;
+    employeesChanged = true;
+    const { secondaryRoleId: _drop, ...rest } = e;
+    void _drop;
+    return rest;
+  });
+  if (employeesChanged) doc = { ...doc, employees };
 
   const marks = doc.marks.filter(
     (m) =>

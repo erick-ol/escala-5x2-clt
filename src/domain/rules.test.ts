@@ -355,3 +355,44 @@ describe('motor de regras CLT', () => {
     expect(report.alerts.filter((a) => a.kind === 'weekly-limit' || a.kind === 'daily-limit')).toHaveLength(0);
   });
 });
+
+describe('dias seguidos de trabalho (work-streak)', () => {
+  test('7 dias seguidos geram 1 alerta; 6 não geram', () => {
+    const seven = cycle([W, W, W, W, W, W, W], [O, O, W, W, W, W, W], [O, O, W, W, W, O, O]);
+    const list = ofKind(alerts(seven), 'work-streak');
+    expect(list).toHaveLength(1);
+    expect(list[0].day).toBe(0);
+    expect(list[0].message).toBe('7 dias seguidos de trabalho (máximo 6 antes do descanso semanal)');
+
+    const six = cycle([W, W, W, W, W, W, O], [O, W, W, W, W, W, W], [O, O, W, W, W, O, O]);
+    expect(ofKind(alerts(six), 'work-streak')).toEqual([]);
+  });
+
+  test('a sequência atravessa a virada do ciclo', () => {
+    // Trabalha dias 18..20 e 0..3 (7 dias seguidos, circular).
+    const cells = cycle([W, W, W, W, O, O, W], [W, W, W, W, O, O, W], [W, W, O, O, W, W, W]);
+    const list = ofKind(alerts(cells), 'work-streak');
+    expect(list).toHaveLength(1);
+    expect(list[0].day).toBe(18);
+    expect(list[0].message).toBe('7 dias seguidos de trabalho (máximo 6 antes do descanso semanal)');
+  });
+
+  test('jornada extra num dia de folga conta como dia trabalhado; loja fechada é descanso', () => {
+    const base = cycle([W, W, W, W, W, W, O], [O, W, W, W, W, W, W], [O, O, W, W, W, O, O]);
+    const extra: ExtraShift[] = [{ employeeId: 'e1', day: 6, shiftId: 'manha', hours: { start: h(7), end: h(12), breakMinutes: 0 } }];
+    const list = ofKind(alerts(base, { extra }), 'work-streak');
+    expect(list).toHaveLength(1);
+    expect(list[0].message).toBe('7 dias seguidos de trabalho (máximo 6 antes do descanso semanal)');
+
+    const closed = withCells(cycle([W, W, W, W, W, W, W], [O, W, W, W, W, W, O], [O, W, W, W, W, W, O]), { 3: C });
+    expect(ofKind(alerts(closed), 'work-streak')).toEqual([]);
+  });
+
+  test('uma sequência longa gera um único alerta', () => {
+    const cells = cycle([W, W, W, W, W, W, W], [W, W, W, W, W, W, W], [W, W, W, O, W, W, W]);
+    const list = ofKind(alerts(cells), 'work-streak');
+    expect(list).toHaveLength(1);
+    expect(list[0].message).toBe('20 dias seguidos de trabalho (máximo 6 antes do descanso semanal)');
+    expect(list[0].day).toBe(18);
+  });
+});

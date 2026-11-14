@@ -28,6 +28,7 @@ export type AlertKind =
   | 'intershift-rest'
   | 'weekly-rest'
   | 'sunday-rotation'
+  | 'work-streak'
   | 'no-hours';
 
 export interface LegalAlert {
@@ -58,6 +59,27 @@ const WEEK_MINUTES = DAYS_PER_WEEK * MINUTES_PER_DAY;
 /** Parte de 24h do descanso semanal que precisa cair dentro da semana. */
 const WEEKLY_REST_CORE_MINUTES = 24 * 60;
 const MAX_ASSIGNED_OFFS_PER_WEEK = 2;
+/** Máximo de dias seguidos de trabalho antes do descanso semanal. */
+export const MAX_WORK_STREAK = 6;
+
+/** Sequências de dias trabalhados no ciclo circular: dia inicial e tamanho. Sem descanso nenhum, uma de 21. */
+export function workStreaks(worked: boolean[]): { start: DayIndex; length: number }[] {
+  const n = worked.length;
+  const restDay = worked.findIndex((w) => !w);
+  if (restDay < 0) return n > 0 ? [{ start: 0, length: n }] : [];
+  const streaks: { start: DayIndex; length: number }[] = [];
+  let start = -1;
+  for (let k = 1; k <= n; k++) {
+    const d = (restDay + k) % n;
+    if (worked[d]) {
+      if (start < 0) start = d;
+    } else if (start >= 0) {
+      streaks.push({ start, length: (d - start + n) % n });
+      start = -1;
+    }
+  }
+  return streaks;
+}
 
 /** Jornada posicionada na linha do tempo do ciclo (minutos desde segunda 00:00 da semana 1). */
 interface Jornada {
@@ -275,6 +297,18 @@ export function evaluateEmployee(input: RulesInput, employeeId: string): Employe
           `Semana ${week + 1} sem descanso de 35h seguidas (maior descanso: ${formatDuration(longest)})`,
         );
       }
+    }
+  }
+
+  // Dias seguidos de trabalho (circular; jornada extra conta como dia trabalhado).
+  for (const streak of workStreaks(worked)) {
+    if (streak.length > MAX_WORK_STREAK) {
+      alert(
+        'work-streak',
+        streak.start,
+        weekOf(streak.start),
+        `${streak.length} dias seguidos de trabalho (máximo ${MAX_WORK_STREAK} antes do descanso semanal)`,
+      );
     }
   }
 

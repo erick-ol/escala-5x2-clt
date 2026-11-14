@@ -120,6 +120,7 @@
 .wi-name small { display: block; font-size: 18px; font-weight: 500; color: #444; }
 .wi .xp-cell-work .xp-initial { font-size: 34px; line-height: 1; }
 .wi .xp-cell-work .xp-times { font-family: var(--font-mono); font-size: 16px; margin-top: 4px; }
+.wi .xp-cell-work .xp-flex { font-size: 13px; margin-top: 2px; }
 .wi .xp-cell-off { font-size: 34px; background: repeating-linear-gradient(45deg, #fff 0 8px, #d6d6d6 8px 11px); }
 .wi .xp-cell-closed { font-size: 30px; background: #e4e4e4; }
 .wi-gap-row .wi-name { font-size: 20px; font-weight: 700; }

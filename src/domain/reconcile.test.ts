@@ -74,4 +74,28 @@ describe('reconcileDocument', () => {
     ];
     expect(reconcileDocument(doc).marks).toHaveLength(1);
   });
+  test('segunda área que aponta para função removida ou igual à principal é descartada', () => {
+    const doc = generated();
+    doc.employees = doc.employees.map((e) =>
+      e.id === 'richard' ? { ...e, secondaryRoleId: 'caixa' } : e.id === 'rosa' ? { ...e, secondaryRoleId: 'repositor' } : e,
+    );
+    const out = reconcileDocument(doc);
+    const byId = Object.fromEntries(out.employees.map((e) => [e.id, e]));
+    expect(byId.richard.secondaryRoleId).toBeUndefined();
+    expect('secondaryRoleId' in byId.rosa).toBe(false);
+    expect(byId.andreza.secondaryRoleId).toBe('balconista');
+    expect(byId.joao.secondaryRoleId).toBe('balconista');
+
+    const noSchedule = reconcileDocument({ ...doc, schedule: null });
+    expect(noSchedule.employees.find((e) => e.id === 'richard')!.secondaryRoleId).toBeUndefined();
+  });
+
+  test('função removida: segunda área que apontava para ela some', () => {
+    const doc = generated();
+    const out = reconcileDocument({
+      ...doc,
+      config: { ...doc.config, roles: doc.config.roles.filter((r) => r.id !== 'balconista') },
+    });
+    expect(out.employees.every((e) => e.secondaryRoleId === undefined)).toBe(true);
+  });
 });

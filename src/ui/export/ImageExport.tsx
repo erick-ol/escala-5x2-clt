@@ -84,6 +84,11 @@ function WeekImage({ model, week }: { model: ExportModel; week: number }) {
         <li>
           <b>—</b> Loja fechada
         </li>
+        {model.rows.some((r) => r.cells.some((c) => c.kind === 'work' && c.flex)) && (
+          <li>
+            <b>→</b> cobrindo outra função
+          </li>
+        )}
       </ul>
     </div>
   );

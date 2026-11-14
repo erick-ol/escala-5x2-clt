@@ -2,7 +2,8 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { exampleDocument } from '../../domain/example';
 import { generateSchedule } from '../../domain/generator';
-import type { AppDocument, Schedule } from '../../domain/types';
+import { computeCoverage } from '../../domain/coverage';
+import { WEEKDAY_NAMES, type AppDocument, type Cell, type Schedule } from '../../domain/types';
 import { appStore } from '../../state/store';
 import { ScheduleView } from './ScheduleView';
 
@@ -14,27 +15,64 @@ vi.mock('../../domain/generator', async (importOriginal) => {
 const TODAY = new Date('2026-11-14T12:00:00');
 const doc = () => appStore.getState().document;
 
-/** Exemplo do mercado com a escala gerada; `tweak` ajusta o documento antes de gravar. */
-function seed(tweak?: (d: AppDocument, s: Schedule) => void) {
+/**
+ * Exemplo do mercado com a escala gerada; `tweak` ajusta o documento antes de gravar.
+ * Sem segunda área: estes testes verificam buracos e alertas, e a cobertura flexível
+ * (Andreza/João como balconistas) taparia os buracos que eles precisam ver.
+ */
+function seed(tweak?: (d: AppDocument, s: Schedule) => void, { secondary = true } = {}) {
   const d = exampleDocument(TODAY);
+  if (!secondary) for (const e of d.employees) delete e.secondaryRoleId;
   const schedule = generateSchedule({ config: d.config, employees: d.employees });
   tweak?.(d, schedule);
   appStore.getState().replaceDocument({ ...d, schedule });
 }
 
+/** Linha de 21 células a partir de um desenho como "WWWW.W." × 3 (W = trabalha, . = folga). */
+function row(pattern: string): Cell[] {
+  const days = pattern.replace(/\s/g, '');
+  expect(days).toHaveLength(21);
+  return [...days].map((ch) => ({ status: ch === 'W' ? 'work' : 'off' }));
+}
+
 /**
- * Um único buraco: balconista à tarde no sábado da semana 2 (Pedro de folga).
- * João (caixa à tarde) está de folga nesse dia.
+ * Um único buraco: balconista à tarde no sábado da semana 2 (dia 12, Pedro de folga).
+ * A equipe da tarde é montada à mão (não depende do gerador): João (caixa à tarde) folga sáb+dom
+ * todas as semanas, Lucas cobre o caixa nesses dias e Pedro trabalha nos sábados das semanas 1 e 3.
+ * Sem segunda área, para ninguém tapar o buraco por conta própria.
  */
 function seedSingleGap() {
-  seed((d, s) => {
-    d.config.minimums = [
-      { roleId: 'caixa', shiftId: 'manha', perWeekday: [1, 1, 1, 1, 1, 1, 1] },
-      { roleId: 'caixa', shiftId: 'tarde', perWeekday: [1, 1, 1, 1, 1, 1, 1] },
-      { roleId: 'balconista', shiftId: 'tarde', perWeekday: [0, 0, 0, 0, 0, 1, 0] },
-    ];
-    s.pedro = s.pedro.map((c, day) => (day === 5 || day === 19 ? { status: 'work' } : day === 12 ? { status: 'off' } : c));
-  });
+  seed(
+    (d, s) => {
+      d.config.minimums = [
+        { roleId: 'caixa', shiftId: 'manha', perWeekday: [1, 1, 1, 1, 1, 1, 1] },
+        { roleId: 'caixa', shiftId: 'tarde', perWeekday: [1, 1, 1, 1, 1, 1, 1] },
+        { roleId: 'balconista', shiftId: 'tarde', perWeekday: [0, 0, 0, 0, 0, 1, 0] },
+      ];
+      s.pedro = row('WWWW.W. WWWWW.. WWWW.W.');
+      s.joao = row('WWWWW.. WWWWW.. WWWWW..');
+      s.lucas = row('W..WWWW W..WWWW W..WWWW');
+    },
+    { secondary: false },
+  );
+}
+
+/**
+ * Dia da semana 1 em que a Rosa trabalha e cuja folga abre um buraco novo no resumo
+ * (lido da escala gerada, sem fixar o dia da semana).
+ */
+function rosaDayThatOpensGap(): { day: number; weekday: string } {
+  const { config, employees, schedule, marks } = doc();
+  const headline = (s: Schedule) => computeCoverage({ config, employees, schedule: s, marks }).headline;
+  const before = headline(schedule!);
+  for (let day = 0; day < 7; day++) {
+    if (schedule!.rosa[day].status !== 'work') continue;
+    const weekday = WEEKDAY_NAMES[day].toLowerCase();
+    if (before.includes(weekday)) continue;
+    const after = headline({ ...schedule!, rosa: schedule!.rosa.map((c, i) => (i === day ? { status: 'off' } : c)) });
+    if (after.includes(weekday)) return { day, weekday };
+  }
+  throw new Error('Nenhum dia da Rosa abre buraco novo na semana 1');
 }
 
 function renderView() {
@@ -97,22 +135,23 @@ describe('ScheduleView', () => {
 
   test('trocar uma folga recalcula na hora o resumo e o contador; "Desfazer" reverte', async () => {
     seed();
+    const { day, weekday } = rosaDayThatOpensGap();
     const { user } = renderView();
-    expect(within(coverage()).getByText(/buracos por semana/)).not.toHaveTextContent('quarta');
+    expect(within(coverage()).getByText(/buracos? por semana/)).not.toHaveTextContent(weekday);
     expect(screen.getByText('Nenhum alerta legal')).toBeInTheDocument();
 
-    await user.click(cell(/^Rosa, quarta, semana 1: trabalha/));
+    await user.click(cell(new RegExp(`^Rosa, ${weekday}, semana 1: trabalha`)));
     const sheet = screen.getByRole('dialog', { name: 'Rosa' });
     await user.click(within(sheet).getByRole('button', { name: 'Folga' }));
 
-    expect(doc().schedule!.rosa[2].status).toBe('off');
-    expect(within(coverage()).getByText(/buracos por semana/)).toHaveTextContent('quarta');
+    expect(doc().schedule!.rosa[day].status).toBe('off');
+    expect(within(coverage()).getByText(/buracos? por semana/)).toHaveTextContent(weekday);
     expect(screen.getByRole('button', { name: /^\d+ alertas? lega/ })).toBeInTheDocument();
-    expect(cell(/^Rosa, quarta, semana 1: folga/)).toBeInTheDocument();
+    expect(cell(new RegExp(`^Rosa, ${weekday}, semana 1: folga`))).toBeInTheDocument();
 
     await user.click(within(sheet).getByRole('button', { name: 'Desfazer' }));
-    expect(doc().schedule!.rosa[2].status).toBe('work');
-    expect(within(coverage()).getByText(/buracos por semana/)).not.toHaveTextContent('quarta');
+    expect(doc().schedule!.rosa[day].status).toBe('work');
+    expect(within(coverage()).getByText(/buracos? por semana/)).not.toHaveTextContent(weekday);
     expect(screen.getByText('Nenhum alerta legal')).toBeInTheDocument();
     expect(within(sheet).getByRole('button', { name: 'Desfazer' })).toBeDisabled();
   });
@@ -242,14 +281,19 @@ describe('ScheduleView', () => {
   });
 
   test('o contador geral abre a lista completa e leva à semana do alerta', async () => {
+    let weekday = '';
     seed((_, s) => {
-      s.pedro[16] = { status: 'work', hours: { start: 360, end: 1020, breakMinutes: 60 } }; // quarta, semana 3
+      // Primeiro dia da semana 3 em que o Pedro (tarde) trabalha: 13:00–23:00 com 1h = 9h, acima do limite diário.
+      // Começa no horário da tarde, então o descanso entre jornadas não muda.
+      const day = s.pedro.findIndex((c, i) => i >= 14 && c.status === 'work');
+      weekday = WEEKDAY_NAMES[day - 14];
+      s.pedro[day] = { status: 'work', hours: { start: 780, end: 1380, breakMinutes: 60 } };
     });
     const { user } = renderView();
     await user.click(screen.getByRole('button', { name: /^1 alerta legal/ }));
-    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: /Pedro · Quarta, semana 3/ }));
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: new RegExp(`Pedro · ${weekday}, semana 3`) }));
     expect(screen.getByRole('button', { name: 'Semana 3' })).toHaveAttribute('aria-pressed', 'true');
-    expect(cell(/^Pedro, quarta, semana 3:/)).toHaveFocus();
+    expect(cell(new RegExp(`^Pedro, ${weekday.toLowerCase()}, semana 3:`))).toHaveFocus();
   });
 
   test('marcação sem buraco correspondente é removida depois de uma edição (KTD15)', async () => {
@@ -289,10 +333,11 @@ describe('ScheduleView', () => {
 
   test('a região aria-live anuncia o resumo e o total de alertas', () => {
     seed();
+    const { day, weekday } = rosaDayThatOpensGap();
     renderView();
     const live = document.querySelector('[aria-live="polite"]')!;
-    expect(live.textContent).toMatch(/buracos por semana.*Nenhum alerta legal\./);
-    act(() => appStore.getState().setCell('rosa', 2, { status: 'off' }));
-    expect(live.textContent).toMatch(/quarta.*alertas? lega/);
+    expect(live.textContent).toMatch(/buracos? por semana.*Nenhum alerta legal\./);
+    act(() => appStore.getState().setCell('rosa', day, { status: 'off' }));
+    expect(live.textContent).toMatch(new RegExp(`${weekday}.*alertas? lega`));
   });
 });

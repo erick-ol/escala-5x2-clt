@@ -28,9 +28,10 @@ export function exampleDocument(today: Date = new Date()): AppDocument {
         { roleId: 'balconista', shiftId: 'tarde', perWeekday: [1, 1, 1, 1, 1, 1, 1] },
       ],
       regime: defaultRegime(today),
+      offPattern: 'together',
     },
     employees: [
-      { id: 'andreza', name: 'Andreza', roleId: 'caixa', shiftId: 'manha', isWoman: true },
+      { id: 'andreza', name: 'Andreza', roleId: 'caixa', secondaryRoleId: 'balconista', shiftId: 'manha', isWoman: true },
       { id: 'richard', name: 'Richard', roleId: 'caixa', shiftId: 'manha', isWoman: false },
       {
         id: 'rosa',
@@ -49,7 +50,7 @@ export function exampleDocument(today: Date = new Date()): AppDocument {
         isWoman: false,
         customHours: { start: h(13, 30), end: h(20, 30), breakMinutes: 60 },
       },
-      { id: 'joao', name: 'João', roleId: 'caixa', shiftId: 'tarde', isWoman: false },
+      { id: 'joao', name: 'João', roleId: 'caixa', secondaryRoleId: 'balconista', shiftId: 'tarde', isWoman: false },
     ],
     schedule: null,
     marks: [],
@@ -66,6 +67,7 @@ export function emptyDocument(today: Date = new Date()): AppDocument {
       roles: [],
       minimums: [],
       regime: defaultRegime(today),
+      offPattern: 'together',
     },
     employees: [],
     schedule: null,
