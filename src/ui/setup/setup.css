@@ -166,10 +166,16 @@
 .setup-minimum-row { display: grid; grid-template-columns: 1fr 72px; gap: 8px; align-items: center; }
 .setup-minimum-label { font-weight: 600; }
 .setup-count { text-align: center; }
-.setup-expander { grid-column: 1 / -1; justify-self: start; padding: 0 8px; font-size: 14px; color: var(--brand); }
-.setup-perday { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-top: 6px; }
-.setup-perday-cell { display: flex; flex-direction: column; align-items: center; gap: 2px; font: 600 12px/1 var(--font-narrow); color: var(--ink-2); }
-.setup-perday-cell .input { padding: 0; text-align: center; }
+.setup-minimum-note { font-weight: 400; color: var(--ink-3, var(--ink-2)); font-size: 14px; }
+.setup-expander { justify-self: start; align-self: flex-start; margin-top: var(--s-2, 8px); }
+.setup-perday { width: 100%; max-width: 440px; border-collapse: collapse; margin-top: var(--s-2, 8px); font-size: 14px; }
+.setup-perday th, .setup-perday td { padding: 4px; border-top: 1px dashed var(--rule); text-align: center; }
+.setup-perday thead th { border-top: 0; font-weight: 600; color: var(--ink-2); font-size: 13px; }
+.setup-perday tbody th { text-align: left; font-weight: 600; width: 56px; }
+.setup-perday .input { width: 100%; max-width: 88px; padding: 6px 0; text-align: center; }
+.setup-perday .is-closed td { color: var(--ink-2); font-style: italic; }
+.setup-perday-single { display: flex; align-items: center; justify-content: center; gap: 8px; }
+.setup-perday-single span { color: var(--ink-2); font-size: 13px; }
 
 /* Regime e equipe */
 .setup-regime { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
@@ -216,8 +222,7 @@
 @media (min-width: 640px) {
   .setup-two { grid-template-columns: 1fr 1fr; }
   .setup-hours { grid-template-columns: repeat(3, 1fr); }
-  .setup-minimum-row { grid-template-columns: 1fr 88px auto; }
-  .setup-expander { grid-column: auto; }
+  .setup-minimum-row { grid-template-columns: 1fr 88px; }
   .first-visit-actions { flex-direction: row; flex-wrap: wrap; }
   .first-visit-actions .btn, .first-visit-actions .restore-backup { flex: 1 1 0; }
   .confirm-backdrop { align-items: center; }

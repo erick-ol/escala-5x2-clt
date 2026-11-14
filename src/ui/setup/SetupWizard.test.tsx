@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { requiredCount, virtualShiftId } from '../../domain/time';
 import type { StoreConfig } from '../../domain/types';
 import { appStore } from '../../state/store';
 import { FirstVisit } from './FirstVisit';
@@ -172,8 +173,7 @@ describe('SetupWizard', () => {
     await user.type(manha, '2');
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 
-    const expanders = screen.getAllByRole('button', { name: 'Ajustar por dia' });
-    await user.click(expanders[0]);
+    await user.click(screen.getByRole('button', { name: 'Mudar o mínimo num dia (ex.: domingo)' }));
     const perDay = screen.getAllByLabelText(/^Mínimo de Balconista no turno Manhã, /).map((i) => i.getAttribute('aria-label')!.slice(-3));
     expect(perDay).toEqual(['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']);
     const domingo = screen.getByLabelText('Mínimo de Balconista no turno Manhã, Dom');
@@ -181,6 +181,33 @@ describe('SetupWizard', () => {
     await user.type(domingo, '3');
     const m = doc().config.minimums.find((x) => x.roleId === 'balconista' && x.shiftId === 'manha');
     expect(m?.perWeekday).toEqual([2, 2, 2, 2, 2, 2, 3]);
+    // O número de todos os dias passa a mostrar "varia" e fica travado até a tabela ser igualada.
+    expect(screen.getByLabelText('Mínimo de Balconista no turno Manhã')).toBeDisabled();
+  });
+
+  test('domingo de turno único: 2 no balcão vale para o dia inteiro e não mexe nos outros dias', async () => {
+    const user = userEvent.setup();
+    seedThroughRoles();
+    const days = doc().config.days.map((d, w) => (w === 6 ? { ...d, opensAt: h(7, 0), closesAt: h(13, 0), singleShift: true } : d));
+    setConfig({ days });
+    render(<SetupWizard onFinish={() => {}} initialStep={2} />);
+
+    await user.click(screen.getByRole('button', { name: 'Mudar o mínimo num dia (ex.: domingo)' }));
+    expect(screen.queryByLabelText('Mínimo de Balconista no turno Manhã, Dom')).not.toBeInTheDocument();
+    const domingo = screen.getByLabelText('Mínimo de Balconista em domingo (turno único)');
+    await user.clear(domingo);
+    await user.type(domingo, '2');
+
+    const mins = doc().config.minimums.filter((x) => x.roleId === 'balconista');
+    for (const m of mins) expect(m.perWeekday).toEqual([1, 1, 1, 1, 1, 1, 2]);
+    expect(requiredCount(doc().config, 0, virtualShiftId(6), 'balconista')).toBe(2);
+    expect(requiredCount(doc().config, 1, 'manha', 'balconista')).toBe(1);
+
+    // O número "de todos os dias" continua editável e não desfaz o domingo.
+    const manha = screen.getByLabelText('Mínimo de Balconista no turno Manhã');
+    expect(manha).not.toBeDisabled();
+    fireEvent.change(manha, { target: { value: '3' } });
+    expect(doc().config.minimums.find((x) => x.roleId === 'balconista' && x.shiftId === 'manha')?.perWeekday).toEqual([3, 3, 3, 3, 3, 3, 2]);
   });
 
   test('avançar sem nenhum funcionário mostra erro na etapa de equipe', async () => {
