@@ -119,6 +119,17 @@ export interface ExtraShift {
   hours: WorkHours;
 }
 
+/**
+ * Almoço sem cobertura assumido pelo dono ou pela família: dia, função e o intervalo exato do buraco.
+ * Se o almoço mudar de horário, o intervalo não bate mais e a marcação é descartada.
+ */
+export interface LunchMark {
+  day: DayIndex;
+  roleId: string;
+  from: Minutes;
+  to: Minutes;
+}
+
 export const SCHEMA_VERSION = 1 as const;
 
 export interface AppDocument {
@@ -127,4 +138,5 @@ export interface AppDocument {
   employees: Employee[];
   schedule: Schedule | null;
   marks: CoverageMark[];
+  lunchMarks: LunchMark[];
 }

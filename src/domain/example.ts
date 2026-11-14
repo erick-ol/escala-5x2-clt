@@ -54,6 +54,7 @@ export function exampleDocument(today: Date = new Date()): AppDocument {
     ],
     schedule: null,
     marks: [],
+    lunchMarks: [],
   };
 }
 
@@ -72,5 +73,6 @@ export function emptyDocument(today: Date = new Date()): AppDocument {
     employees: [],
     schedule: null,
     marks: [],
+    lunchMarks: [],
   };
 }

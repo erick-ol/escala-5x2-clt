@@ -37,6 +37,9 @@ export function reconcileDocument(doc: AppDocument): AppDocument {
       (m.coveredBy.kind === 'owner' || employeeIds.has(m.coveredBy.employeeId)),
   );
 
+  const lunchMarks = (doc.lunchMarks ?? []).filter((m) => roleIds.has(m.roleId));
+  if (lunchMarks.length !== (doc.lunchMarks ?? []).length || !doc.lunchMarks) doc = { ...doc, lunchMarks };
+
   if (!doc.schedule) return marks.length === doc.marks.length ? doc : { ...doc, marks };
 
   const schedule: Schedule = {};

@@ -1,9 +1,9 @@
 import { useEffect, useRef } from 'react';
 import { gapKey, shiftPhrase, type Gap } from '../../domain/coverage';
-import type { PresenceBlock } from '../../domain/lunch';
+import type { LunchGap, PresenceBlock } from '../../domain/lunch';
 import { MINUTES_PER_DAY, findShift, formatTime, weekOf, weekdayOf } from '../../domain/time';
 import { CYCLE_DAYS, WEEKDAY_NAMES, type AppDocument, type Minutes } from '../../domain/types';
-import type { Derived } from '../../state/useDerived';
+import { toggleLunchCover, type Derived } from '../../state/useDerived';
 import { roleName } from './labels';
 
 export interface DayTimelineProps {
@@ -39,6 +39,10 @@ interface Segment {
   text: string;
   /** Buraco do dia inteiro (abre a folha do buraco); undefined para falta no almoço. */
   gapKey?: string;
+  /** Falta no almoço (pode ser assumida pelo dono/família). */
+  lunchGap?: LunchGap;
+  /** Almoço assumido pelo dono/família. */
+  covered?: boolean;
 }
 
 /** Visão do dia: uma barra por pessoa da entrada à saída, com o almoço, agrupada pela função contada no dia. */
@@ -75,6 +79,7 @@ export function DayTimeline({ day, doc, derived, onChangeDay, onBack, onOpenCell
 
   const dayGaps = derived.coverage.gaps.filter((g) => g.day === day);
   const lunchGaps = derived.lunchGaps.filter((g) => g.day === day);
+  const coveredLunch = derived.coveredLunchGaps.filter((g) => g.day === day);
 
   const roleIds = [
     ...config.roles.map((r) => r.id),
@@ -110,6 +115,19 @@ export function DayTimeline({ day, doc, derived, onChangeDay, onBack, onOpenCell
           from,
           to,
           text: `${missingText(g.missing, role)} no almoço ${formatTime(from)}–${formatTime(to)}`,
+          lunchGap: g,
+        });
+      }
+      for (const g of coveredLunch.filter((x) => x.roleId === roleId)) {
+        const from = g.from;
+        const to = after(g.to, g.from);
+        segments.push({
+          key: `c-${g.from}-${g.to}`,
+          from,
+          to,
+          text: `Dono/família cobre ${role.toLowerCase()} no almoço ${formatTime(from)}–${formatTime(to)}`,
+          lunchGap: g,
+          covered: true,
         });
       }
       return { roleId, role, people, segments };
@@ -243,11 +261,17 @@ export function DayTimeline({ day, doc, derived, onChangeDay, onBack, onOpenCell
               </ul>
 
               <div className="dt-row dt-coverage">
-                <span className="dt-label dt-coverage-label">{group.segments.length > 0 ? 'Cobertura' : 'Coberto'}</span>
+                <span className="dt-label dt-coverage-label">
+                  {group.segments.some((s) => !s.covered) ? 'Cobertura' : 'Coberto'}
+                </span>
                 <div className="dt-track">
                   <div className="dt-strip" aria-hidden="true">
                     {group.segments.map((s) => (
-                      <span key={s.key} className="dt-strip-gap" style={{ left: pct(s.from), width: width(s.from, s.to) }} />
+                      <span
+                        key={s.key}
+                        className={s.covered ? 'dt-strip-covered' : 'dt-strip-gap'}
+                        style={{ left: pct(s.from), width: width(s.from, s.to) }}
+                      />
                     ))}
                   </div>
                 </div>
@@ -260,10 +284,26 @@ export function DayTimeline({ day, doc, derived, onChangeDay, onBack, onOpenCell
                         <button type="button" className="dt-gap dt-gap-btn" onClick={() => onOpenGap(s.gapKey!)}>
                           <span aria-hidden="true">▲</span> {s.text}
                         </button>
+                      ) : s.covered ? (
+                        <div className="dt-gap dt-gap-covered">
+                          <span className="dt-gap-text">
+                            <span aria-hidden="true">✓</span> {s.text}
+                          </span>
+                          <button type="button" className="link-btn dt-gap-action" onClick={() => toggleLunchCover(s.lunchGap!)}>
+                            Desfazer
+                          </button>
+                        </div>
                       ) : (
-                        <span className="dt-gap">
-                          <span aria-hidden="true">▲</span> {s.text}
-                        </span>
+                        <div className="dt-gap">
+                          <span className="dt-gap-text">
+                            <span aria-hidden="true">▲</span> {s.text}
+                          </span>
+                          {s.lunchGap && (
+                            <button type="button" className="btn btn-sm dt-gap-action" onClick={() => toggleLunchCover(s.lunchGap!)}>
+                              Coberto por mim/família
+                            </button>
+                          )}
+                        </div>
                       )}
                     </li>
                   ))}

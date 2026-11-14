@@ -5,7 +5,7 @@ import { findLunchGaps, planLunches, presenceForDay, type LunchGap, type LunchIn
 import { evaluateRules, type EmployeeReport, type LegalAlert } from '../domain/rules';
 import { suggestAll, type Suggestion } from '../domain/suggestions';
 import { weekOf } from '../domain/time';
-import type { AppDocument, DayIndex, Schedule } from '../domain/types';
+import type { AppDocument, DayIndex, LunchMark, Schedule } from '../domain/types';
 import { appStore, useAppStore } from './store';
 
 export interface Derived {
@@ -17,8 +17,12 @@ export interface Derived {
   suggestions: Map<string, Suggestion[]>;
   /** Início do almoço de cada pessoa em cada dia (explícito ou planejado pelo site); null quando não trabalha. */
   lunchPlan: LunchPlan;
-  /** Trechos em que uma função fica abaixo do mínimo por causa dos almoços. */
+  /** Trechos em que uma função fica abaixo do mínimo por causa dos almoços (sem os assumidos pelo dono). */
   lunchGaps: LunchGap[];
+  /** Almoços sem cobertura que o dono ou a família assumiu. */
+  coveredLunchGaps: LunchGap[];
+  /** Marcações de almoço que não batem mais com nenhum buraco (o almoço mudou de horário). */
+  orphanLunchMarks: LunchMark[];
   /** Quem está na loja num dia, com entrada, saída e almoço (para a visão do dia). */
   presence(day: DayIndex): PresenceBlock[];
 }
@@ -32,7 +36,12 @@ export function deriveAll(doc: AppDocument, schedule: Schedule): Derived {
   const coverage = computeCoverage({ config, employees, schedule, marks });
   const lunchInput: LunchInput = { config, employees, schedule, flex: coverage.flex, extraShifts: coverage.extraShifts };
   const lunchPlan = planLunches(lunchInput);
-  const lunchGaps = findLunchGaps(lunchInput, lunchPlan);
+  const allLunchGaps = findLunchGaps(lunchInput, lunchPlan);
+  const lunchMarks = doc.lunchMarks ?? [];
+  const isCovered = (g: LunchGap) => lunchMarks.some((m) => sameLunchGap(m, g));
+  const lunchGaps = allLunchGaps.filter((g) => !isCovered(g));
+  const coveredLunchGaps = allLunchGaps.filter(isCovered);
+  const orphanLunchMarks = lunchMarks.filter((m) => !allLunchGaps.some((g) => sameLunchGap(m, g)));
   const rulesInput = { config, employees, schedule, extraShifts: coverage.extraShifts, lunchPlan };
   const reports = evaluateRules(rulesInput);
   const alerts = employees.flatMap((e) => reports[e.id]?.alerts ?? []);
@@ -46,7 +55,24 @@ export function deriveAll(doc: AppDocument, schedule: Schedule): Derived {
     }
     return blocks;
   };
-  return { coverage, reports, alerts, suggestions, lunchPlan, lunchGaps, presence };
+  return { coverage, reports, alerts, suggestions, lunchPlan, lunchGaps, coveredLunchGaps, orphanLunchMarks, presence };
+}
+
+/** Uma marcação de almoço vale para o buraco com o mesmo dia, função e intervalo. */
+export function sameLunchGap(m: Pick<LunchMark, 'day' | 'roleId' | 'from' | 'to'>, g: Pick<LunchGap, 'day' | 'roleId' | 'from' | 'to'>): boolean {
+  return m.day === g.day && m.roleId === g.roleId && m.from === g.from && m.to === g.to;
+}
+
+/** Marca ou desmarca um almoço sem cobertura como assumido pelo dono/família. */
+export function toggleLunchCover(gap: LunchGap): void {
+  const { document, setLunchMarks } = appStore.getState();
+  const current = document.lunchMarks ?? [];
+  const exists = current.some((m) => sameLunchGap(m, gap));
+  setLunchMarks(
+    exists
+      ? current.filter((m) => !sameLunchGap(m, gap))
+      : [...current, { day: gap.day, roleId: gap.roleId, from: gap.from, to: gap.to }],
+  );
 }
 
 /** Semana a que um alerta pertence; null quando vale para o ciclo inteiro. */
@@ -77,6 +103,15 @@ export function useDerived(): Derived | null {
     if (next.length !== current.length) appStore.getState().setMarks(next);
   }, [orphans]);
 
+  // Mesma regra para os almoços: se o almoço mudou de horário, a marcação antiga sai.
+  const orphanLunch = derived?.orphanLunchMarks;
+  useEffect(() => {
+    if (!orphanLunch || orphanLunch.length === 0) return;
+    const current = appStore.getState().document.lunchMarks ?? [];
+    const next = current.filter((m) => !orphanLunch.some((o) => sameLunchGap(o, m)));
+    if (next.length !== current.length) appStore.getState().setLunchMarks(next);
+  }, [orphanLunch]);
+
   return derived;
 }
 
@@ -85,11 +120,12 @@ export function useDerived(): Derived | null {
  * Devolve a mensagem de erro se o gerador falhar.
  */
 export function runGenerate(): string | null {
-  const { document, setSchedule, setMarks } = appStore.getState();
+  const { document, setSchedule, setMarks, setLunchMarks } = appStore.getState();
   try {
     const schedule = generateSchedule({ config: document.config, employees: document.employees });
     setSchedule(schedule);
     setMarks([]);
+    setLunchMarks([]);
     return null;
   } catch (error) {
     console.error(error);

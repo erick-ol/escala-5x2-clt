@@ -65,6 +65,16 @@ export const documentSchema = z.object({
   employees: z.array(employee),
   schedule: z.record(z.array(cell).length(CYCLE_DAYS)).nullable(),
   marks: z.array(mark),
+  lunchMarks: z
+    .array(
+      z.object({
+        day: z.number().int().min(0).max(CYCLE_DAYS - 1),
+        roleId: z.string(),
+        from: z.number().int().min(0),
+        to: z.number().int().min(0),
+      }),
+    )
+    .default([]),
 });
 
 export type ParseResult = { ok: true; document: AppDocument } | { ok: false; error: string };

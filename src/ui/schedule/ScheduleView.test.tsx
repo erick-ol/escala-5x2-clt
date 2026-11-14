@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { exampleDocument } from '../../domain/example';
 import { generateSchedule } from '../../domain/generator';
@@ -434,6 +434,37 @@ describe('ScheduleView: semana por função e visão do dia', () => {
     const segments = group.querySelectorAll<HTMLElement>('.dt-strip-gap');
     expect(segments.length).toBeGreaterThanOrEqual(sameDayRole);
     expect(segments[0].style.left).toMatch(/%$/);
+  });
+
+  test('almoço sem cobertura pode ser assumido pelo dono/família, sai do resumo e pode ser desfeito', async () => {
+    seed();
+    const d = doc();
+    const { lunchGaps } = deriveAll(d, d.schedule!);
+    const gap = lunchGaps.find((g) => g.day < 7)!;
+    const week1Before = lunchGaps.filter((g) => g.day < 7).length;
+    const role = d.config.roles.find((r) => r.id === gap.roleId)!.name;
+    const { user } = renderView();
+    await user.click(screen.getByRole('button', { name: new RegExp(`^${WEEKDAY_NAMES[gap.day % 7]}, dia ${gap.day + 1} do ciclo`) }));
+    const group = screen.getByRole('group', { name: role });
+    const line = within(group).getByText(`Falta${gap.missing > 1 ? 'm' : ''} ${gap.missing} ${role.toLowerCase()}${gap.missing > 1 ? 's' : ''} no almoço ${formatTime(gap.from)}–${formatTime(gap.to)}`);
+    await user.click(within(line.closest('li')!).getByRole('button', { name: 'Coberto por mim/família' }));
+
+    expect(doc().lunchMarks).toEqual([{ day: gap.day, roleId: gap.roleId, from: gap.from, to: gap.to }]);
+    const covered = within(group).getByText(`Dono/família cobre ${role.toLowerCase()} no almoço ${formatTime(gap.from)}–${formatTime(gap.to)}`);
+    expect(covered).toBeInTheDocument();
+    const after = deriveAll(doc(), doc().schedule!);
+    expect(after.lunchGaps.filter((g) => g.day < 7)).toHaveLength(week1Before - 1);
+    expect(after.coveredLunchGaps).toHaveLength(1);
+
+    await user.click(within(covered.closest('li')!).getByRole('button', { name: 'Desfazer' }));
+    expect(doc().lunchMarks).toEqual([]);
+  });
+
+  test('marcação de almoço que não bate mais com nenhum buraco é removida', async () => {
+    seed();
+    appStore.getState().setLunchMarks([{ day: 0, roleId: 'balconista', from: 1, to: 2 }]);
+    renderView();
+    await waitFor(() => expect(doc().lunchMarks).toEqual([]));
   });
 
   test('o resumo mostra o almoço sem cobertura numa segunda linha que abre o dia', async () => {

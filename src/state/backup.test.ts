@@ -35,3 +35,14 @@ describe('backup', () => {
     );
   });
 });
+
+describe('backup antigo sem marcações de almoço', () => {
+  test('é aceito com lista vazia de marcações de almoço', () => {
+    const doc = exampleDocument(new Date('2026-11-14'));
+    const { lunchMarks: _drop, ...old } = doc;
+    void _drop;
+    const result = parseBackup(JSON.stringify({ app: 'escala-5x2-clt', ...old }));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.document.lunchMarks).toEqual([]);
+  });
+});

@@ -6,6 +6,7 @@ import {
   type AppDocument,
   type Cell,
   type CoverageMark,
+  type LunchMark,
   type Employee,
   type Schedule,
   type StoreConfig,
@@ -59,6 +60,7 @@ export interface AppState {
   setRow(employeeId: string, cells: Cell[]): void;
   setCell(employeeId: string, day: number, cell: Cell): void;
   setMarks(marks: CoverageMark[]): void;
+  setLunchMarks(lunchMarks: LunchMark[]): void;
   markBackupDone(when?: Date): void;
 }
 
@@ -162,7 +164,13 @@ export function createAppStore(storage: KeyValueStorage | null, now: () => Date 
         });
       },
 
-      setSchedule: (schedule) => setDocument({ ...doc(), schedule, marks: schedule ? doc().marks : [] }),
+      setSchedule: (schedule) =>
+        setDocument({
+          ...doc(),
+          schedule,
+          marks: schedule ? doc().marks : [],
+          lunchMarks: schedule ? doc().lunchMarks : [],
+        }),
 
       setRow: (employeeId, cells) => {
         const d = doc();
@@ -180,6 +188,7 @@ export function createAppStore(storage: KeyValueStorage | null, now: () => Date 
       },
 
       setMarks: (marks) => setDocument({ ...doc(), marks }),
+      setLunchMarks: (lunchMarks) => setDocument({ ...doc(), lunchMarks }),
 
       markBackupDone: (when) => set({ lastBackupAt: (when ?? now()).toISOString() }),
     };
