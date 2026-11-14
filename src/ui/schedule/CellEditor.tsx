@@ -335,11 +335,11 @@ function HoursForm({ initial, plannedBreakStart, canApplyAll, dateOnly = false, 
   let error = draft ? isValidHours(draft) : null;
   if (!draft) {
     error = lunchInvalid
-      ? 'Preencha o início do almoço em hh:mm ou deixe em branco.'
+      ? 'Preencha o início do intervalo em hh:mm ou deixe em branco.'
       : 'Preencha entrada, saída (hh:mm) e intervalo em minutos.';
   } else if (!error && draft.breakStart !== undefined && draft.breakMinutes > 0) {
     const offset = sinceStart(draft.start, draft.breakStart);
-    if (offset + draft.breakMinutes > grossMinutes(draft)) error = 'O almoço precisa caber entre a entrada e a saída.';
+    if (offset + draft.breakMinutes > grossMinutes(draft)) error = 'O intervalo precisa caber entre a entrada e a saída.';
   }
   const dirty = !draft || !sameHours(draft, initial);
   const lateLunch = s !== null && l !== null && sinceStart(s, l) > LATE_BREAK_MINUTES;
@@ -386,7 +386,7 @@ function HoursForm({ initial, plannedBreakStart, canApplyAll, dateOnly = false, 
         </div>
       </div>
       <div className="field lunch-field">
-        <label htmlFor={ids.lunch}>Almoço (início)</label>
+        <label htmlFor={ids.lunch}>Intervalo (início)</label>
         <input
           id={ids.lunch}
           {...TIME_FIELD_PROPS}
@@ -409,7 +409,7 @@ function HoursForm({ initial, plannedBreakStart, canApplyAll, dateOnly = false, 
           <span className="alert-icon" aria-hidden="true">
             !
           </span>
-          <span className="visually-hidden">Alerta legal: </span>O almoço começa mais de 6h depois da entrada. Pela CLT, o intervalo deve começar até a 6ª hora de trabalho.
+          <span className="visually-hidden">Alerta legal: </span>O intervalo começa mais de 6h depois da entrada. Pela CLT, ele deve começar até a 6ª hora de trabalho.
         </p>
       )}
       {!dirty && (
@@ -427,7 +427,7 @@ function HoursForm({ initial, plannedBreakStart, canApplyAll, dateOnly = false, 
             {draft.breakStart !== undefined && (
               <>
                 {' '}
-                com almoço às <span className="mono">{formatTime(draft.breakStart)}</span>
+                com intervalo às <span className="mono">{formatTime(draft.breakStart)}</span>
               </>
             )}{' '}
             a:

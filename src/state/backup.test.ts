@@ -41,8 +41,8 @@ describe('backup', () => {
   });
 });
 
-describe('backup antigo sem marcações de almoço', () => {
-  test('é aceito com lista vazia de marcações de almoço', () => {
+describe('backup antigo sem marcações de intervalo', () => {
+  test('é aceito com lista vazia de marcações de intervalo', () => {
     const doc = exampleDocument(new Date('2026-11-14'));
     const { lunchMarks: _drop, ...old } = doc;
     void _drop;
@@ -52,7 +52,7 @@ describe('backup antigo sem marcações de almoço', () => {
   });
 });
 
-describe('documento antigo sem "Almoço a partir de"', () => {
+describe('documento antigo sem "Intervalo a partir de"', () => {
   test('lê com 11:30', () => {
     const doc = exampleDocument(new Date('2026-11-14'));
     const { lunchFrom: _drop, ...config } = doc.config;

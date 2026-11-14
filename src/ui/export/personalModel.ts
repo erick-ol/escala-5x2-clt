@@ -106,7 +106,7 @@ interface Source {
 
 function lunchOnly(hours: WorkHours, start: number | null | undefined): string {
   if (hours.breakMinutes <= 0 || start === null || start === undefined) return '';
-  return `almoço ${formatTime(start)}–${formatTime(start + hours.breakMinutes)}`;
+  return `intervalo ${formatTime(start)}–${formatTime(start + hours.breakMinutes)}`;
 }
 
 function lunchText(hours: WorkHours, start: number | null | undefined): string {
@@ -175,7 +175,7 @@ function header(document: AppDocument, e: Employee, roleName: Map<string, string
   const shift = config.shifts.find((s) => s.id === e.shiftId);
   const hours = registeredHours(config, e);
   const parts = [shift?.name ?? '', hours ? formatRange(hours) : ''];
-  if (hours && hours.breakMinutes > 0) parts.push(`${formatDuration(hours.breakMinutes)} de almoço`);
+  if (hours && hours.breakMinutes > 0) parts.push(`${formatDuration(hours.breakMinutes)} de intervalo`);
   return { roleLine, shiftLine: parts.filter(Boolean).join(' · ') };
 }
 

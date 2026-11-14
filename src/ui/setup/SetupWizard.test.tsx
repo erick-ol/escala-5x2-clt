@@ -306,14 +306,14 @@ describe('SetupWizard', () => {
     expect(screen.getByText(/Regime de 42h \(escolhido no passo 1\)/)).toBeInTheDocument();
   });
 
-  test('turnos: "Almoço a partir de" começa em 11:30 e grava config.lunchFrom', async () => {
+  test('turnos: "Intervalo a partir de" começa em 11:30 e grava config.lunchFrom', async () => {
     const user = userEvent.setup();
     seedThroughRoles();
     render(<SetupWizard onFinish={() => {}} initialStep={1} />);
-    const field = screen.getByLabelText('Almoço a partir de');
+    const field = screen.getByLabelText('Intervalo a partir de');
     expect(field).toHaveValue('11:30');
     expect(
-      screen.getByText('O site planeja o almoço de cada pessoa a partir desse horário, sem passar de 6h de trabalho antes da pausa.'),
+      screen.getByText(/O site planeja o intervalo de cada pessoa a partir desse horário\. Antecipa só quando isso evita ficar sem ninguém/),
     ).toBeInTheDocument();
     await user.clear(field);
     await user.type(field, '1200');

@@ -173,7 +173,7 @@ describe('calendário por funcionário (mês)', () => {
       for (const x of inside) {
         if (x.info.kind !== 'work') continue;
         expect(x.info.range).toMatch(/^\d{2}:\d{2}–\d{2}:\d{2}$/);
-        expect(x.info.lunch).toMatch(/^almoço \d{2}:\d{2}–\d{2}:\d{2}$/);
+        expect(x.info.lunch).toMatch(/^intervalo \d{2}:\d{2}–\d{2}:\d{2}$/);
         expect(x.info.text).toContain(x.info.range!);
         expect(x.info.text).toContain(x.info.lunch!);
       }
@@ -183,7 +183,7 @@ describe('calendário por funcionário (mês)', () => {
     expect(sundays.some((x) => x.kind === 'work' && x.shiftTag === 'U' && x.range === '07:00–13:00')).toBe(true);
     const andreza = buildPersonalModel(d, 'andreza', december)!;
     const dec2 = andreza.weeks.flatMap((w) => w.days).find((x) => x.date === '2026-12-02')!;
-    expect(dec2).toMatchObject({ range: '08:00–16:00', lunch: 'almoço 12:00–13:00' });
+    expect(dec2).toMatchObject({ range: '08:00–16:00', lunch: 'intervalo 12:00–13:00' });
     expect(dec2.shiftTag).toBeUndefined();
   });
 });

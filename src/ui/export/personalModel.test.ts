@@ -44,17 +44,17 @@ describe('escala por funcionário — ciclo', () => {
     expect(andreza.storeName).toBe('Mercado do exemplo');
     expect(andreza.name).toBe('Andreza');
     expect(andreza.roleLine).toBe('Caixa · cobre balconista quando preciso');
-    expect(andreza.shiftLine).toBe('Manhã · 06:30–14:00 · 1h de almoço');
+    expect(andreza.shiftLine).toBe('Manhã · 06:30–14:00 · 1h de intervalo');
     expect(andreza.periodLabel).toBe('Ciclo de 3 semanas a partir de 29/11/2026');
     expect(andreza.fileName).toBe('escala-andreza-ciclo.png');
     expect(andreza.shareTitle).toBe('Escala de Andreza — Ciclo de 3 semanas a partir de 29/11/2026');
 
     const rosa = buildPersonalModel(doc(), 'rosa', cycle)!;
     expect(rosa.roleLine).toBe('Balconista');
-    expect(rosa.shiftLine).toBe('Manhã · 05:45–13:30 · 1h de almoço');
+    expect(rosa.shiftLine).toBe('Manhã · 05:45–13:30 · 1h de intervalo');
   });
 
-  it('uma linha por dia com horário e almoço do plano, folgas e turno único no domingo', () => {
+  it('uma linha por dia com horário e intervalo do plano, folgas e turno único no domingo', () => {
     const d = doc();
     const { config, employees, schedule, marks } = d;
     const coverage = computeCoverage({ config, employees, schedule: schedule!, marks });
@@ -76,10 +76,10 @@ describe('escala por funcionário — ciclo', () => {
         }
         expect(cell.status).toBe('work');
         const lunch = plan[e.id][i]!;
-        const lunchText = `almoço ${formatTime(lunch)}–${formatTime(lunch + 60)}`;
+        const lunchText = `intervalo ${formatTime(lunch)}–${formatTime(lunch + 60)}`;
         if (i % 7 === 0) {
           // Domingo do exemplo: turno único no horário da loja, 15 min de intervalo.
-          expect(day.text).toBe(`Turno único 07:00–13:00 · almoço ${formatTime(lunch)}–${formatTime(lunch + 15)}`);
+          expect(day.text).toBe(`Turno único 07:00–13:00 · intervalo ${formatTime(lunch)}–${formatTime(lunch + 15)}`);
         } else {
           expect(day.text).toContain(lunchText);
         }
@@ -87,7 +87,7 @@ describe('escala por funcionário — ciclo', () => {
     }
     // Alguém trabalha num domingo do ciclo (turno único).
     const sundays = buildPersonalModels(d, cycle).flatMap((m) => [0, 7, 14].map((i) => days(m)[i].text));
-    expect(sundays.some((t) => t.startsWith('Turno único 07:00–13:00 · almoço'))).toBe(true);
+    expect(sundays.some((t) => t.startsWith('Turno único 07:00–13:00 · intervalo'))).toBe(true);
   });
 
   it('marca "cobre balconista" nos dias em que a pessoa vai para a segunda área', () => {
@@ -100,12 +100,12 @@ describe('escala por funcionário — ciclo', () => {
     }
   });
 
-  it('almoço com horário escolhido (breakStart) sai como informado', () => {
+  it('intervalo com horário escolhido (breakStart) sai como informado', () => {
     const d = doc();
     const row = d.schedule!.richard;
     const day = row.findIndex((c, i) => c.status === 'work' && i % 7 !== 0);
     row[day] = { status: 'work', hours: { start: h(7), end: h(15), breakMinutes: 60, breakStart: h(11, 30) } };
-    expect(days(buildPersonalModel(d, 'richard', cycle)!)[day].text).toBe('07:00–15:00 · almoço 11:30–12:30');
+    expect(days(buildPersonalModel(d, 'richard', cycle)!)[day].text).toBe('07:00–15:00 · intervalo 11:30–12:30');
   });
 
   it('total da semana bate com as horas trabalhadas das regras', () => {
@@ -138,7 +138,7 @@ describe('escala por funcionário — ciclo', () => {
     const richard = buildPersonalModel(withExtra, 'richard', cycle)!;
     const day = days(richard)[richardDay];
     expect(day.extras).toHaveLength(1);
-    expect(day.extras[0]).toMatch(/^Cobre balconista · Tarde 13:00–20:30 · almoço \d{2}:\d{2}–\d{2}:\d{2}$/);
+    expect(day.extras[0]).toMatch(/^Cobre balconista · Tarde 13:00–20:30 · intervalo \d{2}:\d{2}–\d{2}:\d{2}$/);
     const without = buildPersonalModel({ ...withExtra, marks: [] }, 'richard', cycle)!;
     const week = Math.floor(richardDay / 7);
     expect(richard.weeks[week].minutes - without.weeks[week].minutes).toBe(6.5 * 60);
@@ -187,7 +187,7 @@ describe('escala por funcionário — mês', () => {
     }
   });
 
-  it('feriado, ajustes da data e almoço informado no ajuste', () => {
+  it('feriado, ajustes da data e intervalo informado no ajuste', () => {
     const d = doc();
     const models = buildPersonalModels(d, december);
     for (const m of models) {
@@ -197,12 +197,12 @@ describe('escala por funcionário — mês', () => {
     const rosa = models.find((m) => m.employeeId === 'rosa')!;
     expect(days(rosa).find((x) => x.label === 'Qua 02/12')).toMatchObject({ kind: 'off', text: 'Folga' });
     const andreza = models.find((m) => m.employeeId === 'andreza')!;
-    expect(days(andreza).find((x) => x.label === 'Qua 02/12')!.text).toBe('08:00–16:00 · almoço 12:00–13:00');
+    expect(days(andreza).find((x) => x.label === 'Qua 02/12')!.text).toBe('08:00–16:00 · intervalo 12:00–13:00');
     // O mesmo dia do ciclo em outra semana segue o horário do cadastro.
     // 02/12 é o dia 3 do ciclo (quarta da semana 1), em que a Andreza trabalha.
     expect(d.schedule!.andreza[3].status).toBe('work');
     const cycleText = days(buildPersonalModel(d, 'andreza', cycle)!)[3].text;
-    expect(cycleText).toMatch(/^06:30–14:00 · almoço/);
+    expect(cycleText).toMatch(/^06:30–14:00 · intervalo/);
     // Total da semana do Natal (20/12 a 26/12): um dia a menos para quem trabalharia na sexta 25/12 (dia 5 do ciclo).
     const noHoliday = buildPersonalModels({ ...d, calendar: { ...d.calendar, closedDates: [] } }, december);
     const fridayWorkers = models.filter((m) => d.schedule![m.employeeId][5].status === 'work');
@@ -217,7 +217,7 @@ describe('escala por funcionário — mês', () => {
   it('turno único no domingo e "cobre" na segunda área também nas datas', () => {
     const models = buildPersonalModels(doc(), december);
     const texts = models.flatMap((m) => days(m).filter((x) => x.label.startsWith('Dom')).map((x) => x.text));
-    expect(texts.some((t) => /^Turno único 07:00–13:00 · almoço \d{2}:\d{2}–\d{2}:\d{2}$/.test(t))).toBe(true);
+    expect(texts.some((t) => /^Turno único 07:00–13:00 · intervalo \d{2}:\d{2}–\d{2}:\d{2}$/.test(t))).toBe(true);
     expect(models.flatMap(days).some((x) => personalDayText(x).includes('cobre balconista'))).toBe(true);
   });
 

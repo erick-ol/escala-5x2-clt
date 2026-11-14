@@ -343,18 +343,24 @@ export function lunchFromOf(config: StoreConfig): Minutes {
  * no próprio dia, então a preferência não restringe nada nelas (não faz sentido "almoço a partir de
  * 11:30" numa jornada 22:00–06:00).
  */
+function lexBetter(a: number[], b: number[]): boolean {
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] < b[i];
+  return false;
+}
+
 function chooseLunch(job: Job, index: number, state: DayState, lunchFrom: Minutes): Minutes {
   const b = job.hours.breakMinutes;
   const role = state.idx.get(job.roleId)!;
   const lunchArr = state.lunch[role];
   const legalFirst = Math.ceil((job.start + LUNCH_MIN_OFFSET) / GRID) * GRID;
   const last = Math.min(job.start + LUNCH_MAX_OFFSET, job.end - b - 1);
-  // Primeiro início da grade ≥ lunchFrom; se passar do último início legal, cai no fallback.
+  // Primeiro início da grade ≥ lunchFrom. Antes dele só se evitar falta (o intervalo pode ser antecipado);
+  // se nenhum início legal fica depois de lunchFrom, o mais perto dele.
   const preferredFirst = Math.max(legalFirst, Math.ceil(lunchFrom / GRID) * GRID);
   const preferred = preferredFirst <= last;
-  const first = preferred ? preferredFirst : legalFirst;
+  const first = legalFirst;
   const ideal = preferred ? job.start + (job.end - job.start) / 2 - b / 2 : lunchFrom;
-  // Falta que este almoço acrescenta em cada minuto da janela possível (não depende do início escolhido).
+  // Falta que este intervalo acrescenta em cada minuto da janela possível (não depende do início escolhido).
   const lo = Math.max(0, first);
   const hi = Math.min(SPAN, last + b);
   const added = new Int32Array(Math.max(0, hi - lo));
@@ -362,7 +368,7 @@ function chooseLunch(job: Job, index: number, state: DayState, lunchFrom: Minute
     added[t - lo] = state.evaluate(t, role, index) - state.base[t];
   }
   let best: Minutes | null = null;
-  let bestScore: [number, number, number] = [Infinity, Infinity, Infinity];
+  let bestScore: number[] = [];
   for (let s = first; s <= last; s += GRID) {
     let extra = 0;
     let overlap = 0;
@@ -371,11 +377,10 @@ function chooseLunch(job: Job, index: number, state: DayState, lunchFrom: Minute
       extra += added[t - lo];
       overlap += lunchArr[t];
     }
-    const score: [number, number, number] = [extra, overlap, Math.abs(s - ideal)];
-    if (
-      score[0] < bestScore[0] ||
-      (score[0] === bestScore[0] && (score[1] < bestScore[1] || (score[1] === bestScore[1] && score[2] < bestScore[2])))
-    ) {
+    // Ordem: menos falta; o mais perto de lunchFrom (0 a partir dele); menos sobreposição; perto do ideal.
+    const early = preferred ? Math.max(0, preferredFirst - s) : 0;
+    const score = [extra, early, overlap, Math.abs(s - ideal)];
+    if (best === null || lexBetter(score, bestScore)) {
       best = s;
       bestScore = score;
     }

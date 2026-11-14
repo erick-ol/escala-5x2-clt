@@ -314,7 +314,7 @@ export function evaluateEmployee(input: RulesInput, employeeId: string, options:
       if (j.worked <= 6 * 60 || j.hours.breakMinutes <= 0) continue;
       const lunch = explicitLunchStart(j.hours) ?? input.lunchPlan?.[j.lunchKey]?.[j.day] ?? null;
       if (lunch !== null && lunch - j.hours.start > LUNCH_MAX_OFFSET) {
-        alert('break-late', b.day, weekOf(b.day), 'Almoço começa depois de 6h de trabalho (máximo 6h antes da pausa)');
+        alert('break-late', b.day, weekOf(b.day), 'Intervalo começa depois de 6h de trabalho (máximo 6h antes da pausa)');
         break;
       }
     }

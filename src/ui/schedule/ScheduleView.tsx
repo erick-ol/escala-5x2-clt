@@ -130,8 +130,8 @@ export function ScheduleView({ onExport, initialError = null }: ScheduleViewProp
     lunchGaps.length === 0
       ? null
       : weekLunchGaps > 0
-        ? `Almoço sem cobertura: ${plural(weekLunchGaps, 'vez', 'vezes')} na semana ${week + 1}`
-        : `Almoço sem cobertura: ${plural(lunchGaps.length, 'vez', 'vezes')} no ciclo`;
+        ? `Intervalo sem cobertura: ${plural(weekLunchGaps, 'vez', 'vezes')} na semana ${week + 1}`
+        : `Intervalo sem cobertura: ${plural(lunchGaps.length, 'vez', 'vezes')} no ciclo`;
   const firstLunchGapDay = (() => {
     const inWeek = lunchGaps.filter((g) => weekOf(g.day) === week);
     const list = inWeek.length > 0 ? inWeek : lunchGaps;
@@ -236,7 +236,7 @@ export function ScheduleView({ onExport, initialError = null }: ScheduleViewProp
             <h2 id={`sv-week-${week}`} className="sv-week-title">
               Semana {week + 1}
             </h2>
-            <p className="sv-dayhint hint">Toque no dia (Dom, Seg…) para ver os horários e o almoço de cada pessoa.</p>
+            <p className="sv-dayhint hint">Toque no dia (Dom, Seg…) para ver os horários e o intervalo de cada pessoa.</p>
             <WeekGrid
               key={week}
               week={week}

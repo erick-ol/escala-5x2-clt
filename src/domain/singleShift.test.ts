@@ -191,8 +191,8 @@ describe('turno único: gerador', () => {
   });
 });
 
-describe('turno único: almoço, regras, reconciliação, sugestões e backup', () => {
-  it('almoço planejado dentro do horário do turno único', () => {
+describe('turno único: intervalo, regras, reconciliação, sugestões e backup', () => {
+  it('intervalo planejado dentro do horário do turno único', () => {
     const doc = example();
     const schedule = generateSchedule({ config: doc.config, employees: doc.employees });
     const plan = planLunches({ config: doc.config, employees: doc.employees, schedule });

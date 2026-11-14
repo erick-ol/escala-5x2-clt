@@ -567,7 +567,7 @@ describe('ExportPanel no mês — calendário (padrão)', () => {
     expect(arg.files?.[0].name).toBe('escala-mercado-do-exemplo-dezembro-2026.png');
   });
 
-  it('por funcionário: prévia, imagem e impressão em calendário, com almoço, folga, feriado e totais', async () => {
+  it('por funcionário: prévia, imagem e impressão em calendário, com intervalo, folga, feriado e totais', async () => {
     render(<ExportPanel month={DECEMBER} onClose={vi.fn()} />);
     await userEvent.selectOptions(screen.getByLabelText('Funcionário'), 'Rosa');
     await screen.findByText('Imagem de Rosa pronta.');
@@ -595,7 +595,7 @@ describe('ExportPanel no mês — calendário (padrão)', () => {
     expect(day('2026-12-25')).toHaveTextContent('Feriado');
     const work = days.filter((d) => d.classList.contains('pc-work'));
     expect(work.length).toBeGreaterThan(15);
-    for (const d of work) expect(d.textContent).toMatch(/\d{2}:\d{2}–\d{2}:\d{2}.*almoço \d{2}:\d{2}–\d{2}:\d{2}/);
+    for (const d of work) expect(d.textContent).toMatch(/\d{2}:\d{2}–\d{2}:\d{2}.*intervalo \d{2}:\d{2}–\d{2}:\d{2}/);
     for (const d of days.filter((x) => x.classList.contains('pc-off'))) expect(d).toHaveTextContent('Folga');
     const model = buildPersonalModel(appStore.getState().document, 'rosa', { kind: 'month', ...DECEMBER })!;
     expect(within(cal).getAllByTestId('personal-calendar-total').map((t) => t.textContent)).toEqual(

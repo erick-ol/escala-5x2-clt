@@ -162,16 +162,16 @@ export function ShiftsStep() {
 
       <div className="setup-lunch card">
         <div className="field">
-          <label htmlFor="lunch-from">Almoço a partir de</label>
+          <label htmlFor="lunch-from">Intervalo a partir de</label>
           <TimeInput
             id="lunch-from"
-            label="Almoço a partir de"
+            label="Intervalo a partir de"
             value={config.lunchFrom ?? DEFAULT_LUNCH_FROM}
             onChange={(v) => updateConfig({ lunchFrom: v })}
           />
         </div>
         <p className="hint">
-          O site planeja o almoço de cada pessoa a partir desse horário, sem passar de 6h de trabalho antes da pausa.
+          O site planeja o intervalo de cada pessoa a partir desse horário. Antecipa só quando isso evita ficar sem ninguém, e nunca passa de 6h de trabalho antes da pausa.
         </p>
       </div>
     </section>

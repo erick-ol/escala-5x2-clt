@@ -137,7 +137,7 @@ export function MonthView({ year, month, onChangeMonth, switcher }: MonthViewPro
 
   /** Mínimos atendidos (os almoços sem cobertura aparecem numa linha à parte, como no ciclo). */
   const ok = projection.gapCount === 0;
-  const lunchText = `Almoço sem cobertura: ${plural(projection.lunchGapCount, 'vez', 'vezes')} no mês`;
+  const lunchText = `Intervalo sem cobertura: ${plural(projection.lunchGapCount, 'vez', 'vezes')} no mês`;
   const gapText =
     projection.gapCount === 0 ? `Tudo coberto em ${label.toLowerCase()}` : `${plural(projection.gapCount, 'vaga sem ninguém', 'vagas sem ninguém')} no mês`;
 

@@ -124,7 +124,7 @@ export function DayTimeline({ day, doc, derived, onChangeDay, onBack, onOpenCell
           key: `l-${g.from}-${g.to}`,
           from,
           to,
-          text: `${missingText(g.missing, role)} no almoço ${formatTime(from)}–${formatTime(to)}`,
+          text: `${missingText(g.missing, role)} no intervalo ${formatTime(from)}–${formatTime(to)}`,
           lunchGap: g,
         });
       }
@@ -135,7 +135,7 @@ export function DayTimeline({ day, doc, derived, onChangeDay, onBack, onOpenCell
           key: `c-${g.from}-${g.to}`,
           from,
           to,
-          text: `Dono/família cobre ${role.toLowerCase()} no almoço ${formatTime(from)}–${formatTime(to)}`,
+          text: `Dono/família cobre ${role.toLowerCase()} no intervalo ${formatTime(from)}–${formatTime(to)}`,
           lunchGap: g,
           covered: true,
         });
@@ -231,12 +231,12 @@ export function DayTimeline({ day, doc, derived, onChangeDay, onBack, onOpenCell
                   const name = employee?.name ?? 'Pessoa removida';
                   const lunch =
                     b.breakStart !== null && b.breakEnd !== null
-                      ? `Almoço ${formatTime(b.breakStart)}–${formatTime(b.breakEnd)}`
+                      ? `Intervalo ${formatTime(b.breakStart)}–${formatTime(b.breakEnd)}`
                       : null;
                   const flex = employee && employee.roleId !== b.roleId;
                   const label = [
                     `${name}: ${formatTime(b.start)}–${formatTime(b.end)}`,
-                    lunch ? `${lunch.toLowerCase()}${b.breakPlanned ? ', sugerido pelo site' : ''}` : 'sem almoço',
+                    lunch ? `${lunch.toLowerCase()}${b.breakPlanned ? ', sugerido pelo site' : ''}` : 'sem intervalo',
                     flex ? `cobrindo ${group.role}` : null,
                     'editar',
                   ]
@@ -346,7 +346,7 @@ export function DayTimeline({ day, doc, derived, onChangeDay, onBack, onOpenCell
 
       {!closed && !dateMode?.holiday && groups.length === 0 && <p className="hint">Ninguém trabalha neste dia.</p>}
       {dateMode && groups.some((g) => g.segments.some((x) => x.lunchGap)) && (
-        <p className="hint">Para marcar um almoço como coberto por você ou pela família, use a visão Ciclo.</p>
+        <p className="hint">Para marcar um intervalo como coberto por você ou pela família, use a visão Ciclo.</p>
       )}
 
       {off.length > 0 && (

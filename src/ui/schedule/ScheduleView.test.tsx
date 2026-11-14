@@ -452,7 +452,7 @@ describe('ScheduleView: semana por função e visão do dia', () => {
     expect(screen.getByRole('rowheader', { name: 'Vagas faltantes: Balconista, tarde' })).toHaveTextContent('Tarde');
   });
 
-  test('o cabeçalho do dia abre a visão do dia com barras e almoço; "Voltar" devolve o foco ao dia', async () => {
+  test('o cabeçalho do dia abre a visão do dia com barras e intervalo; "Voltar" devolve o foco ao dia', async () => {
     seed();
     const d = doc();
     const derived = deriveAll(d, d.schedule!);
@@ -470,7 +470,7 @@ describe('ScheduleView: semana por função e visão do dia', () => {
       const group = bar.closest('[role="group"]') as HTMLElement;
       expect(group).toHaveAccessibleName(d.config.roles.find((r) => r.id === b.roleId)!.name);
       if (b.breakStart !== null && b.breakEnd !== null) {
-        const lunch = `Almoço ${formatTime(b.breakStart)}–${formatTime(b.breakEnd)}`;
+        const lunch = `Intervalo ${formatTime(b.breakStart)}–${formatTime(b.breakEnd)}`;
         expect(bar).toHaveAccessibleName(new RegExp(lunch.toLowerCase()));
         expect(bar.querySelector('.dt-lunch')).not.toBeNull();
         expect(bar.closest('li')).toHaveTextContent(lunch);
@@ -497,7 +497,7 @@ describe('ScheduleView: semana por função e visão do dia', () => {
     expect(screen.getByRole('dialog', { name: 'Andreza' })).toHaveTextContent(`Semana 1 · ${Weekday}`);
   });
 
-  test('falta de cobertura no almoço aparece em laranja na faixa da função, com o texto', async () => {
+  test('falta de cobertura no intervalo aparece em laranja na faixa da função, com o texto', async () => {
     seed();
     const d = doc();
     const { lunchGaps } = deriveAll(d, d.schedule!);
@@ -509,7 +509,7 @@ describe('ScheduleView: semana por função e visão do dia', () => {
     await user.click(screen.getByRole('button', { name: new RegExp(`^${nameOf(gap.day)}, dia ${gap.day + 1} do ciclo`) }));
 
     const group = screen.getByRole('group', { name: role });
-    const text = `Falta${gap.missing > 1 ? 'm' : ''} ${gap.missing} ${role.toLowerCase()}${gap.missing > 1 ? 's' : ''} no almoço ${formatTime(gap.from)}–${formatTime(gap.to)}`;
+    const text = `Falta${gap.missing > 1 ? 'm' : ''} ${gap.missing} ${role.toLowerCase()}${gap.missing > 1 ? 's' : ''} no intervalo ${formatTime(gap.from)}–${formatTime(gap.to)}`;
     expect(within(group).getByText(text)).toBeInTheDocument();
     const sameDayRole = lunchGaps.filter((g) => g.day === gap.day && g.roleId === gap.roleId).length;
     const segments = group.querySelectorAll<HTMLElement>('.dt-strip-gap');
@@ -517,7 +517,7 @@ describe('ScheduleView: semana por função e visão do dia', () => {
     expect(segments[0].style.left).toMatch(/%$/);
   });
 
-  test('almoço sem cobertura pode ser assumido pelo dono/família, sai do resumo e pode ser desfeito', async () => {
+  test('intervalo sem cobertura pode ser assumido pelo dono/família, sai do resumo e pode ser desfeito', async () => {
     seed();
     const d = doc();
     const { lunchGaps } = deriveAll(d, d.schedule!);
@@ -527,11 +527,11 @@ describe('ScheduleView: semana por função e visão do dia', () => {
     const { user } = renderView();
     await user.click(screen.getByRole('button', { name: new RegExp(`^${nameOf(gap.day)}, dia ${gap.day + 1} do ciclo`) }));
     const group = screen.getByRole('group', { name: role });
-    const line = within(group).getByText(`Falta${gap.missing > 1 ? 'm' : ''} ${gap.missing} ${role.toLowerCase()}${gap.missing > 1 ? 's' : ''} no almoço ${formatTime(gap.from)}–${formatTime(gap.to)}`);
+    const line = within(group).getByText(`Falta${gap.missing > 1 ? 'm' : ''} ${gap.missing} ${role.toLowerCase()}${gap.missing > 1 ? 's' : ''} no intervalo ${formatTime(gap.from)}–${formatTime(gap.to)}`);
     await user.click(within(line.closest('li')!).getByRole('button', { name: 'Coberto por mim/família' }));
 
     expect(doc().lunchMarks).toEqual([{ day: gap.day, roleId: gap.roleId, from: gap.from, to: gap.to }]);
-    const covered = within(group).getByText(`Dono/família cobre ${role.toLowerCase()} no almoço ${formatTime(gap.from)}–${formatTime(gap.to)}`);
+    const covered = within(group).getByText(`Dono/família cobre ${role.toLowerCase()} no intervalo ${formatTime(gap.from)}–${formatTime(gap.to)}`);
     expect(covered).toBeInTheDocument();
     const after = deriveAll(doc(), doc().schedule!);
     expect(after.lunchGaps.filter((g) => g.day < 7)).toHaveLength(week1Before - 1);
@@ -541,28 +541,28 @@ describe('ScheduleView: semana por função e visão do dia', () => {
     expect(doc().lunchMarks).toEqual([]);
   });
 
-  test('marcação de almoço que não bate mais com nenhum buraco é removida', async () => {
+  test('marcação de intervalo que não bate mais com nenhum buraco é removida', async () => {
     seed();
     appStore.getState().setLunchMarks([{ day: 0, roleId: 'balconista', from: 1, to: 2 }]);
     renderView();
     await waitFor(() => expect(doc().lunchMarks).toEqual([]));
   });
 
-  test('o resumo mostra o almoço sem cobertura numa segunda linha que abre o dia', async () => {
+  test('o resumo mostra o intervalo sem cobertura numa segunda linha que abre o dia', async () => {
     seed();
     const d = doc();
     const { lunchGaps } = deriveAll(d, d.schedule!);
     const week1 = lunchGaps.filter((g) => g.day < 7);
     expect(week1.length).toBeGreaterThan(0);
     const { user } = renderView();
-    const line = within(coverage()).getByRole('button', { name: /Almoço sem cobertura/ });
-    expect(line).toHaveTextContent(`Almoço sem cobertura: ${week1.length} ${week1.length === 1 ? 'vez' : 'vezes'} na semana 1`);
+    const line = within(coverage()).getByRole('button', { name: /Intervalo sem cobertura/ });
+    expect(line).toHaveTextContent(`Intervalo sem cobertura: ${week1.length} ${week1.length === 1 ? 'vez' : 'vezes'} na semana 1`);
     await user.click(line);
     const first = Math.min(...week1.map((g) => g.day));
     expect(screen.getByRole('heading', { name: `${nameOf(first)}, dia ${first + 1} — Semana 1` })).toBeInTheDocument();
   });
 
-  test('"Almoço (início)" vem com o horário planejado e "Só este dia" grava breakStart na célula', async () => {
+  test('"Intervalo (início)" vem com o horário planejado e "Só este dia" grava breakStart na célula', async () => {
     seed();
     const d = doc();
     const { day, weekday } = workday('andreza');
@@ -571,26 +571,26 @@ describe('ScheduleView: semana por função e visão do dia', () => {
     const { user } = renderView();
     await user.click(cell(new RegExp(`^Andreza, ${weekday}, semana 1:`)));
     const sheet = screen.getByRole('dialog', { name: 'Andreza' });
-    const field = within(sheet).getByLabelText('Almoço (início)');
+    const field = within(sheet).getByLabelText('Intervalo (início)');
     expect(field).toHaveValue(formatTime(planned!));
 
     fireEvent.change(field, { target: { value: '13:00' } });
-    expect(sheet).toHaveTextContent('O almoço começa mais de 6h depois da entrada');
+    expect(sheet).toHaveTextContent('O intervalo começa mais de 6h depois da entrada');
     fireEvent.change(field, { target: { value: '10:00' } });
     expect(sheet).not.toHaveTextContent('mais de 6h depois da entrada');
     await user.click(within(sheet).getByRole('button', { name: 'Só este dia' }));
     expect(doc().schedule!.andreza[day].hours).toEqual({ start: 390, end: 840, breakMinutes: 60, breakStart: 600 });
     expect(doc().employees.find((e) => e.id === 'andreza')!.customHours).toBeUndefined();
-    expect(within(sheet).getByLabelText('Almoço (início)')).toHaveValue('10:00');
+    expect(within(sheet).getByLabelText('Intervalo (início)')).toHaveValue('10:00');
   });
 
-  test('"Todos os dias" grava o início do almoço no cadastro', async () => {
+  test('"Todos os dias" grava o início do intervalo no cadastro', async () => {
     seed();
     const { weekday } = workday('richard');
     const { user } = renderView();
     await user.click(cell(new RegExp(`^Richard, ${weekday}, semana 1:`)));
     const sheet = screen.getByRole('dialog', { name: 'Richard' });
-    fireEvent.change(within(sheet).getByLabelText('Almoço (início)'), { target: { value: '11:15' } });
+    fireEvent.change(within(sheet).getByLabelText('Intervalo (início)'), { target: { value: '11:15' } });
     await user.click(within(sheet).getByRole('button', { name: 'Todos os dias' }));
     expect(doc().employees.find((e) => e.id === 'richard')!.customHours).toEqual({
       start: 390,

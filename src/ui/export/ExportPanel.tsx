@@ -226,10 +226,10 @@ export function ExportPanel({ month, onClose }: ExportPanelProps) {
                 </h3>
                 <p className="hint">
                   {calendar && monthModel
-                    ? `Calendário de ${monthModel.monthLabel.toLowerCase()} de uma pessoa, para entregar a ela: horários, almoço, folgas e o total de cada semana.`
+                    ? `Calendário de ${monthModel.monthLabel.toLowerCase()} de uma pessoa, para entregar a ela: horários, intervalo, folgas e o total de cada semana.`
                     : monthModel
-                    ? `Escala de uma pessoa em ${monthModel.monthLabel.toLowerCase()}, para entregar a ela: horários, almoço e folgas.`
-                    : 'Escala de uma pessoa nas 3 semanas do ciclo, para entregar a ela: horários, almoço e folgas.'}
+                    ? `Escala de uma pessoa em ${monthModel.monthLabel.toLowerCase()}, para entregar a ela: horários, intervalo e folgas.`
+                    : 'Escala de uma pessoa nas 3 semanas do ciclo, para entregar a ela: horários, intervalo e folgas.'}
                 </p>
                 <div className="field">
                   <label htmlFor={personSelectId}>Funcionário</label>
