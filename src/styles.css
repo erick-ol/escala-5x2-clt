@@ -1,42 +1,44 @@
 /*
-  Direção visual: "quadro de escala do balcão".
-  Papel quente, tinta verde-escura, etiquetas de turno, laranja de sinalização para buracos
-  e vermelho para alertas legais. Archivo (inclusive a versão estreita) cabe 7 dias em 375px;
-  IBM Plex Mono para horários.
+  Direção visual: simples, preto e branco.
+  Cor só para avisos: laranja = buraco de cobertura, vermelho = alerta da CLT, verde = tudo certo.
+  Fonte do sistema; horários em fonte monoespaçada do sistema.
 */
 :root {
-  --paper: #f4f0e6;
-  --paper-2: #ebe5d6;
-  --card: #fffdf8;
-  --ink: #17231f;
-  --ink-2: #44514c;
-  --ink-3: #7a847f;
-  --rule: #d8d0bd;
-  --brand: #1f5f4f;
+  --paper: #ffffff;
+  --paper-2: #f2f2f2;
+  --card: #ffffff;
+  --ink: #000000;
+  --ink-2: #333333;
+  --ink-3: #6b6b6b;
+  --rule: #d4d4d4;
+  --brand: #000000;
   --brand-ink: #ffffff;
-  --brand-soft: #dcebe4;
-  --off: #e6e0d0;
-  --closed: #cfc7b3;
-  --gap: #e8701a;
-  --gap-soft: #fde7d3;
-  --alert: #c0322b;
-  --alert-soft: #f9dcd9;
-  --ok: #2c7a4b;
-  --shift-a: #2f6db0;
-  --shift-a-soft: #dde9f6;
-  --shift-b: #8a5a12;
-  --shift-b-soft: #f3e6cc;
-  --shift-c: #6b3f8c;
-  --shift-c-soft: #ece0f3;
+  --brand-soft: #f2f2f2;
+  --off: #f2f2f2;
+  --closed: #d4d4d4;
+  /* Avisos: as únicas cores do site. */
+  --gap: #d9620f;
+  --gap-soft: #fdecdd;
+  --alert: #c4271f;
+  --alert-soft: #fbe3e1;
+  --ok: #1e7a3c;
+  --ok-soft: #e3f3e8;
+  /* Turnos se distinguem pela letra, não pela cor. */
+  --shift-a: #000000;
+  --shift-a-soft: #ffffff;
+  --shift-b: #000000;
+  --shift-b-soft: #ffffff;
+  --shift-c: #000000;
+  --shift-c-soft: #ffffff;
 
-  --font-sans: 'Archivo', system-ui, sans-serif;
-  --font-narrow: 'Archivo Narrow', 'Archivo', system-ui, sans-serif;
-  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-narrow: var(--font-sans);
+  --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
-  --radius: 10px;
-  --radius-sm: 6px;
+  --radius: 6px;
+  --radius-sm: 4px;
   --tap: 44px;
-  --shadow: 0 1px 0 rgba(23, 35, 31, 0.06), 0 6px 18px -10px rgba(23, 35, 31, 0.25);
+  --shadow: none;
 
   font-family: var(--font-sans);
   color: var(--ink);
@@ -49,13 +51,11 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background:
-    radial-gradient(circle at 1px 1px, rgba(23, 35, 31, 0.07) 1px, transparent 0) 0 0 / 18px 18px,
-    var(--paper);
+  background: var(--paper);
 }
 
 h1, h2, h3 { font-family: var(--font-sans); letter-spacing: -0.01em; line-height: 1.15; margin: 0; }
-h1 { font-weight: 800; font-stretch: 112%; }
+h1 { font-weight: 700; }
 p { line-height: 1.5; }
 
 .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
@@ -89,14 +89,14 @@ p { line-height: 1.5; }
 .btn:active { transform: translateY(1px); }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .btn-primary { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); }
-.btn-primary:hover { background: #184d40; }
+.btn-primary:hover { background: #262626; }
 .btn-danger { background: var(--alert); border-color: var(--alert); color: #fff; }
-.btn-danger:hover { background: #a12a24; }
+.btn-danger:hover { background: #a3201a; }
 .btn-ghost { border-color: transparent; background: transparent; }
 .btn-ghost:hover { background: var(--paper-2); }
 .btn-sm { min-height: 36px; padding: 0 12px; font-size: 14px; }
 
-:focus-visible { outline: 3px solid var(--shift-a); outline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 
 /* Campos */
 .field { display: flex; flex-direction: column; gap: 6px; }
@@ -129,7 +129,7 @@ p { line-height: 1.5; }
 }
 .tag-gap { background: var(--gap-soft); color: #8a3d05; }
 .tag-alert { background: var(--alert-soft); color: var(--alert); }
-.tag-ok { background: var(--brand-soft); color: var(--brand); }
+.tag-ok { background: var(--ok-soft); color: var(--ok); }
 
 .visually-hidden {
   position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px;

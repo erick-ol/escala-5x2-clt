@@ -20,22 +20,22 @@
   .print-only {
     display: block !important;
     color: #000;
-    font-family: 'Archivo', system-ui, sans-serif;
+    font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
     font-size: 8.5pt;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
 
   .ps-header { display: flex; align-items: baseline; justify-content: space-between; gap: 12pt; border-bottom: 2pt solid #000; padding-bottom: 3pt; }
-  .ps-title { font-size: 16pt; font-weight: 800; font-stretch: 112%; margin: 0; }
+  .ps-title { font-size: 16pt; font-weight: 700; margin: 0; }
   .ps-sub { margin: 0; font-size: 9pt; }
 
   .ps-legend { list-style: none; margin: 5pt 0; padding: 0; display: flex; flex-wrap: wrap; gap: 3pt 14pt; font-size: 8.5pt; }
-  .ps-legend .mono { font-family: 'IBM Plex Mono', ui-monospace, monospace; }
+  .ps-legend .mono { font-family: ui-monospace, Menlo, Consolas, monospace; }
 
   .ps-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
   .ps-table th, .ps-table td { border: 0.6pt solid #000; padding: 2pt 1pt; text-align: center; vertical-align: middle; }
-  .ps-table thead th { font-family: 'Archivo Narrow', 'Archivo', sans-serif; font-weight: 700; }
+  .ps-table thead th { font-family: system-ui, Arial, sans-serif; font-weight: 700; }
   .ps-week { font-size: 9pt; background: #000; color: #fff; }
   .ps-day { font-size: 7.5pt; }
   .ps-name { width: 13%; text-align: left !important; padding-left: 4pt !important; font-weight: 700; font-size: 8.5pt; }
@@ -44,7 +44,7 @@
   .ps-table tr { break-inside: avoid; page-break-inside: avoid; }
 
   .xp-cell-work .xp-initial { font-size: 9pt; }
-  .xp-cell-work .xp-times { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 6.2pt; }
+  .xp-cell-work .xp-times { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 6.2pt; }
   /* Folga: hachura diagonal leve; loja fechada: cinza chapado. Ambos legíveis sem cor. */
   .xp-cell-off { background: repeating-linear-gradient(45deg, #fff 0 3pt, #ccc 3pt 4pt); font-size: 11pt; }
   .xp-cell-closed { background: #e2e2e2; }

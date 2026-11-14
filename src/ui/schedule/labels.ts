@@ -27,7 +27,7 @@ export function roleName(config: StoreConfig, roleId: string): string {
 /** Nome curto para a coluna fixa de 375px: primeiro nome, até 6 letras. */
 export function shortName(name: string): string {
   const first = name.trim().split(/\s+/)[0] ?? name;
-  return first.length <= 6 ? first : `${first.slice(0, 5)}.`;
+  return first.length <= 6 ? first : `${first.slice(0, 4)}.`;
 }
 
 export function dayLabel(day: number): string {
