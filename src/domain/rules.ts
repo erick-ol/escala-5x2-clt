@@ -39,6 +39,11 @@ export interface LegalAlert {
   day: DayIndex | null;
   week: number | null;
   message: string;
+  /**
+   * Só no modo linear (datas reais): último dia do trecho que o alerta cobre, quando passa de um dia
+   * (ex.: a sequência de dias trabalhados que passou de 6). Serve para saber se o alerta toca o mês.
+   */
+  endDay?: DayIndex;
 }
 
 export interface EmployeeReport {
@@ -59,7 +64,25 @@ export interface RulesInput {
    * 'break-late'; o início informado (`breakStart`) sempre entra. Sem nenhum dos dois, não confere.
    */
   lunchPlan?: LunchPlan;
+  /**
+   * Quantidade de dias da linha do tempo (múltiplo de 7, começando numa segunda). Padrão: o ciclo (21 dias).
+   * No modo linear (visão Mês) é o trecho de datas reais conferido.
+   */
+  days?: number;
 }
+
+export interface RulesOptions {
+  /**
+   * true (padrão): linha do tempo circular do ciclo (o dia 21 emenda no dia 1).
+   * false: datas reais em sequência, sem emenda (visão Mês). Antes do primeiro dia e depois do último
+   * não se sabe nada: quem chama passa uma margem de semanas e descarta os alertas fora do trecho de interesse.
+   */
+  circular?: boolean;
+  /** Nome da semana nas mensagens. Padrão: "Semana 1". */
+  weekName?(week: number): string;
+}
+
+const defaultWeekName = (week: number) => `Semana ${week + 1}`;
 
 const CYCLE_MINUTES = CYCLE_DAYS * MINUTES_PER_DAY;
 const WEEK_MINUTES = DAYS_PER_WEEK * MINUTES_PER_DAY;
@@ -68,6 +91,21 @@ const WEEKLY_REST_CORE_MINUTES = 24 * 60;
 const MAX_ASSIGNED_OFFS_PER_WEEK = 2;
 /** Máximo de dias seguidos de trabalho antes do descanso semanal. */
 export const MAX_WORK_STREAK = 6;
+
+/** Sequências de dias trabalhados em linha reta (sem emendar o fim no começo). */
+export function linearWorkStreaks(worked: boolean[]): { start: DayIndex; length: number }[] {
+  const streaks: { start: DayIndex; length: number }[] = [];
+  let start = -1;
+  for (let d = 0; d <= worked.length; d++) {
+    if (d < worked.length && worked[d]) {
+      if (start < 0) start = d;
+    } else if (start >= 0) {
+      streaks.push({ start, length: d - start });
+      start = -1;
+    }
+  }
+  return streaks;
+}
 
 /** Sequências de dias trabalhados no ciclo circular: dia inicial e tamanho. Sem descanso nenhum, uma de 21. */
 export function workStreaks(worked: boolean[]): { start: DayIndex; length: number }[] {
@@ -118,13 +156,14 @@ function toJornada(day: DayIndex, hours: WorkHours, lunchKey: string): Jornada {
 function buildDays(
   input: RulesInput,
   employee: Employee,
+  days: number,
 ): { blocks: (DayBlock | null)[]; worked: boolean[]; missingHours: DayIndex[] } {
   const cells = input.schedule[employee.id] ?? [];
   const extras = (input.extraShifts ?? []).filter((x) => x.employeeId === employee.id);
   const blocks: (DayBlock | null)[] = [];
   const worked: boolean[] = [];
   const missingHours: DayIndex[] = [];
-  for (let day = 0; day < CYCLE_DAYS; day++) {
+  for (let day = 0; day < days; day++) {
     const cell = cells[day];
     const jornadas: Jornada[] = [];
     if (cell?.status === 'work') {
@@ -176,16 +215,29 @@ function overlapCircular(a: number, b: number, lo: number, hi: number): number {
   return total;
 }
 
-export function evaluateEmployee(input: RulesInput, employeeId: string): EmployeeReport {
+/** Quanto do intervalo [a, b) cai dentro de [lo, hi), em linha reta. */
+function overlapLinear(a: number, b: number, lo: number, hi: number): number {
+  return Math.max(0, Math.min(b, hi) - Math.max(a, lo));
+}
+
+/** Descanso aberto antes do primeiro dia / depois do último no modo linear (nada se sabe fora do trecho). */
+const OPEN_REST = 1e9;
+
+export function evaluateEmployee(input: RulesInput, employeeId: string, options: RulesOptions = {}): EmployeeReport {
+  const circular = options.circular ?? true;
+  const weekName = options.weekName ?? defaultWeekName;
+  const days = input.days ?? CYCLE_DAYS;
+  const weeks = Math.ceil(days / DAYS_PER_WEEK);
   const employee = input.employees.find((e) => e.id === employeeId);
-  const report: EmployeeReport = { employeeId, weeklyMinutes: Array.from({ length: WEEKS }, () => 0), alerts: [] };
+  const report: EmployeeReport = { employeeId, weeklyMinutes: Array.from({ length: weeks }, () => 0), alerts: [] };
   if (!employee) return report;
 
   const { config } = input;
   const cells = input.schedule[employeeId] ?? [];
-  const { blocks, worked, missingHours } = buildDays(input, employee);
-  const alert = (kind: AlertKind, day: DayIndex | null, week: number | null, message: string) =>
-    report.alerts.push({ kind, employeeId, day, week, message });
+  const { blocks, worked, missingHours } = buildDays(input, employee, days);
+  const alert = (kind: AlertKind, day: DayIndex | null, week: number | null, message: string, endDay?: DayIndex) =>
+    report.alerts.push({ kind, employeeId, day, week, message, ...(endDay !== undefined ? { endDay } : {}) });
+  const overlap = circular ? overlapCircular : overlapLinear;
 
   // Dia de trabalho sem turno válido: as horas não podem ser conferidas (turno removido, dado inconsistente).
   for (const day of missingHours) {
@@ -203,13 +255,13 @@ export function evaluateEmployee(input: RulesInput, employeeId: string): Employe
         'weekly-limit',
         null,
         week,
-        `Semana ${week + 1}: ${formatDuration(minutes)} trabalhadas (teto de ${formatDuration(weeklyLimit)})`,
+        `${weekName(week)}: ${formatDuration(minutes)} trabalhadas (teto de ${formatDuration(weeklyLimit)})`,
       );
     }
   });
 
   // Folgas: ao menos 2 dias sem trabalho e no máximo 2 folgas atribuídas por semana (KTD14).
-  for (let week = 0; week < WEEKS; week++) {
+  for (let week = 0; week < weeks; week++) {
     let daysWithoutWork = 0;
     let assignedOffs = 0;
     for (let d = week * DAYS_PER_WEEK; d < (week + 1) * DAYS_PER_WEEK; d++) {
@@ -221,11 +273,11 @@ export function evaluateEmployee(input: RulesInput, employeeId: string): Employe
         'days-off',
         null,
         week,
-        `Semana ${week + 1} com ${daysWithoutWork} ${daysWithoutWork === 1 ? 'dia' : 'dias'} sem trabalho (mínimo ${MIN_DAYS_OFF_PER_WEEK})`,
+        `${weekName(week)} com ${daysWithoutWork} ${daysWithoutWork === 1 ? 'dia' : 'dias'} sem trabalho (mínimo ${MIN_DAYS_OFF_PER_WEEK})`,
       );
     }
     if (assignedOffs > MAX_ASSIGNED_OFFS_PER_WEEK) {
-      alert('too-many-offs', null, week, `Semana ${week + 1} com ${assignedOffs} folgas (máximo ${MAX_ASSIGNED_OFFS_PER_WEEK})`);
+      alert('too-many-offs', null, week, `${weekName(week)} com ${assignedOffs} folgas (máximo ${MAX_ASSIGNED_OFFS_PER_WEEK})`);
     }
   }
 
@@ -276,10 +328,16 @@ export function evaluateEmployee(input: RulesInput, employeeId: string): Employe
     }
   }
 
-  // Descansos entre blocos, na linha do tempo circular (KTD5).
+  // Descansos entre blocos, na linha do tempo circular (KTD5) ou, no modo linear, em sequência.
   const timeline = blocks.filter((b): b is DayBlock => b !== null);
   const rests: { start: number; end: number; length: number }[] = [];
+  if (!circular && timeline.length > 0) {
+    rests.push({ start: timeline[0].start - OPEN_REST, end: timeline[0].start, length: OPEN_REST });
+    const last = timeline[timeline.length - 1];
+    rests.push({ start: last.end, end: last.end + OPEN_REST, length: OPEN_REST });
+  }
   timeline.forEach((b, i) => {
+    if (!circular && i === 0) return;
     const prev = timeline[(i - 1 + timeline.length) % timeline.length];
     const prevEnd = i === 0 ? prev.end - CYCLE_MINUTES : prev.end;
     const length = b.start - prevEnd;
@@ -297,29 +355,43 @@ export function evaluateEmployee(input: RulesInput, employeeId: string): Employe
   // Descanso semanal: em cada semana, um descanso de 35h seguidas do qual ao menos 24h caem dentro da semana.
   // Assim, uma folga que só invade a semana por algumas horas não conta para ela.
   if (timeline.length > 0) {
-    for (let week = 0; week < WEEKS; week++) {
+    for (let week = 0; week < weeks; week++) {
       const lo = week * WEEK_MINUTES;
       const hi = lo + WEEK_MINUTES;
       const ok = rests.some(
-        (r) => r.length >= WEEKLY_REST_MINUTES && overlapCircular(r.start, r.end, lo, hi) >= WEEKLY_REST_CORE_MINUTES,
+        (r) => r.length >= WEEKLY_REST_MINUTES && overlap(r.start, r.end, lo, hi) >= WEEKLY_REST_CORE_MINUTES,
       );
       if (!ok) {
         const longest = Math.max(
           0,
-          ...rests.filter((r) => overlapCircular(r.start, r.end, lo, hi) > 0).map((r) => Math.min(r.length, overlapCircular(r.start, r.end, lo, hi))),
+          ...rests.filter((r) => overlap(r.start, r.end, lo, hi) > 0).map((r) => Math.min(r.length, overlap(r.start, r.end, lo, hi))),
         );
         alert(
           'weekly-rest',
           null,
           week,
-          `Semana ${week + 1} sem descanso de 35h seguidas (maior descanso: ${formatDuration(longest)})`,
+          `${weekName(week)} sem descanso de 35h seguidas (maior descanso: ${formatDuration(longest)})`,
         );
       }
     }
   }
 
   // Dias seguidos de trabalho (circular; jornada extra conta como dia trabalhado).
-  for (const streak of workStreaks(worked)) {
+  // No modo linear, o alerta cai no 7º dia seguido (o primeiro que passa do limite) e vai até o fim da sequência.
+  if (!circular) {
+    for (const streak of linearWorkStreaks(worked)) {
+      if (streak.length <= MAX_WORK_STREAK) continue;
+      const first = streak.start + MAX_WORK_STREAK;
+      alert(
+        'work-streak',
+        first,
+        weekOf(first),
+        `${streak.length} dias seguidos de trabalho (máximo ${MAX_WORK_STREAK} antes do descanso semanal)`,
+        streak.start + streak.length - 1,
+      );
+    }
+  }
+  for (const streak of circular ? workStreaks(worked) : []) {
     if (streak.length > MAX_WORK_STREAK) {
       alert(
         'work-streak',
@@ -331,7 +403,19 @@ export function evaluateEmployee(input: RulesInput, employeeId: string): Employe
   }
 
   // Rodízio de domingo (R10, R10a). Domingo de loja fechada é descanso para todos (KTD14).
-  {
+  // Modo linear: mulheres nunca 2 domingos seguidos trabalhados; homens nunca 3 seguidos (alerta no último).
+  if (!circular) {
+    const sundays = Array.from({ length: weeks }, (_, w) => w * DAYS_PER_WEEK + SUNDAY).filter((d) => d < days);
+    sundays.forEach((d, w) => {
+      if (employee.isWoman) {
+        if (w >= 1 && worked[d] && worked[sundays[w - 1]]) {
+          alert('sunday-rotation', d, w, 'Trabalha 2 domingos seguidos. Precisa folgar ao menos um domingo a cada 2 semanas.');
+        }
+      } else if (w >= 2 && worked[d] && worked[sundays[w - 1]] && worked[sundays[w - 2]]) {
+        alert('sunday-rotation', d, w, 'Trabalha 3 domingos seguidos. Precisa folgar ao menos um domingo a cada 3 semanas.');
+      }
+    });
+  } else {
     const sundays = Array.from({ length: WEEKS }, (_, w) => w * DAYS_PER_WEEK + SUNDAY);
     const workedSunday = sundays.map((d) => worked[d]);
     if (employee.isWoman) {
@@ -361,8 +445,8 @@ export function evaluateEmployee(input: RulesInput, employeeId: string): Employe
   return report;
 }
 
-export function evaluateRules(input: RulesInput): Record<string, EmployeeReport> {
+export function evaluateRules(input: RulesInput, options: RulesOptions = {}): Record<string, EmployeeReport> {
   const result: Record<string, EmployeeReport> = {};
-  for (const e of input.employees) result[e.id] = evaluateEmployee(input, e.id);
+  for (const e of input.employees) result[e.id] = evaluateEmployee(input, e.id, options);
   return result;
 }

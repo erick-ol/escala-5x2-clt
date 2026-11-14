@@ -1,12 +1,12 @@
 import { createPortal } from 'react-dom';
 import { CYCLE_DAYS, DAYS_PER_WEEK, WEEKDAY_SHORT } from '../../domain/types';
 import { weekdayOf } from '../../domain/time';
-import type { ExportCell, ExportModel, GapCell } from './exportModel';
+import type { ExportCell, ExportModel, GapCell, LegendItem, MonthExportModel } from './exportModel';
 import './print.css';
 
 export function ScheduleCellContent({ cell }: { cell: ExportCell }) {
   if (cell.kind === 'off') return <span className="xp-off">F</span>;
-  if (cell.kind === 'closed') return <span className="xp-closed">—</span>;
+  if (cell.kind === 'closed') return <span className="xp-closed">{cell.holiday ? 'Fer.' : '—'}</span>;
   return (
     <>
       <span className="xp-initial">{cell.initial}</span>
@@ -24,7 +24,7 @@ export function GapCellContent({ cell }: { cell: GapCell }) {
 }
 
 export function cellClass(cell: ExportCell): string {
-  return `xp-cell xp-cell-${cell.kind}`;
+  return `xp-cell xp-cell-${cell.kind}${cell.kind === 'closed' && cell.holiday ? ' xp-cell-holiday' : ''}`;
 }
 
 const days = Array.from({ length: CYCLE_DAYS }, (_, d) => d);
@@ -111,6 +111,104 @@ export function PrintSheet({ model }: { model: ExportModel }) {
           ))}
         </tbody>
       </table>
+      <p className="ps-foot">
+        Ferramenta orientativa baseada na EC 141/2026. Não substitui orientação jurídica nem convenção coletiva.
+      </p>
+    </div>,
+    document.body,
+  );
+}
+
+function MonthLegend({ legend, hasFlex, hasHoliday }: { legend: LegendItem[]; hasFlex: boolean; hasHoliday: boolean }) {
+  return (
+    <ul className="ps-legend" aria-label="Legenda">
+      {legend.map((l) => (
+        <li key={l.initial}>
+          <b>{l.initial}</b> = {l.name} <span className="mono">{l.times}</span>
+        </li>
+      ))}
+      <li>
+        <span className="xp-off">F</span> = Folga
+      </li>
+      <li>
+        <span className="xp-closed">—</span> = Loja fechada
+      </li>
+      {hasHoliday && (
+        <li>
+          <span className="xp-closed">Fer.</span> = Feriado (loja fechada na data)
+        </li>
+      )}
+      <li>
+        <span className="xp-missing">✕ Falta</span> = vaga sem ninguém
+      </li>
+      {hasFlex && (
+        <li>
+          <span className="xp-flex">→</span> = cobrindo outra função
+        </li>
+      )}
+    </ul>
+  );
+}
+
+/**
+ * Folha de impressão do mês: uma tabela por semana (segunda a domingo), com as datas reais.
+ * Datas fora do mês saem apagadas (cinza e itálico), legíveis em preto e branco.
+ */
+export function MonthPrintSheet({ model }: { model: MonthExportModel }) {
+  const cells = model.weeks.flatMap((w) => w.rows.flatMap((r) => r.cells));
+  const hasFlex = cells.some((c) => c.kind === 'work' && !!c.flex);
+  const hasHoliday = cells.some((c) => c.kind === 'closed' && !!c.holiday);
+  return createPortal(
+    <div className="print-only ps-month" data-testid="print-sheet" data-scope="month" aria-hidden="true">
+      <header className="ps-header">
+        <h1 className="ps-title">{model.storeName}</h1>
+        <p className="ps-sub">Escala de {model.monthLabel} · ciclo de 3 semanas aplicado nas datas</p>
+      </header>
+      <MonthLegend legend={model.legend} hasFlex={hasFlex} hasHoliday={hasHoliday} />
+      {model.weeks.map((w) => (
+        <table key={w.monday} className="ps-table ps-month-week" data-testid="print-week">
+          <thead>
+            <tr>
+              <th className="ps-name ps-week-label">
+                {w.label}
+                <small>Semana {w.cycleWeek + 1} do ciclo</small>
+              </th>
+              {w.headers.map((text, i) => (
+                <th key={i} className={`ps-day${w.inMonth[i] ? '' : ' ps-out'}`}>
+                  {text}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {w.rows.map((row) => (
+              <tr key={row.id} data-testid="print-row">
+                <th scope="row" className="ps-name">
+                  {row.name}
+                  {row.roleName && <small>{row.roleName}</small>}
+                </th>
+                {row.cells.map((cell, i) => (
+                  <td key={i} className={`${cellClass(cell)}${w.inMonth[i] ? '' : ' ps-out'}`}>
+                    <ScheduleCellContent cell={cell} />
+                  </td>
+                ))}
+              </tr>
+            ))}
+            {w.gapRows.map((row) => (
+              <tr key={row.key} className="ps-gap-row">
+                <th scope="row" className="ps-name">
+                  {row.label}
+                </th>
+                {row.cells.map((cell, i) => (
+                  <td key={i} className={`xp-gap xp-gap-${cell.kind}${w.inMonth[i] ? '' : ' ps-out'}`}>
+                    <GapCellContent cell={cell} />
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ))}
       <p className="ps-foot">
         Ferramenta orientativa baseada na EC 141/2026. Não substitui orientação jurídica nem convenção coletiva.
       </p>

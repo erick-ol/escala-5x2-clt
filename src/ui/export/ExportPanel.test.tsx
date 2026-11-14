@@ -231,6 +231,67 @@ describe('ExportPanel', () => {
   });
 });
 
+describe('ExportPanel no mês', () => {
+  beforeEach(() => {
+    const doc = fixture();
+    appStore.setState({
+      document: {
+        ...doc,
+        calendar: {
+          cycleStart: '2026-11-30',
+          closedDates: ['2026-12-25'],
+          dateOverrides: [{ date: '2026-12-02', employeeId: 'rosa', cell: { status: 'off' } }],
+        },
+      },
+    });
+  });
+
+  it('folha do mês tem todas as datas do mês, semana a semana, com o feriado', async () => {
+    render(<ExportPanel month={{ year: 2026, month: 12 }} onClose={vi.fn()} />);
+    await screen.findByText('Imagem de 30/11 – 06/12 pronta.');
+    expect(screen.getByRole('button', { name: 'Mês: Dezembro de 2026' })).toHaveAttribute('aria-pressed', 'true');
+    const sheet = printSheet();
+    expect(sheet).toHaveAttribute('data-scope', 'month');
+    expect(sheet).toHaveTextContent('Escala de Dezembro de 2026');
+    for (let d = 1; d <= 31; d++) expect(sheet).toHaveTextContent(`${String(d).padStart(2, '0')}/12`);
+    const weeks = within(sheet).getAllByTestId('print-week');
+    expect(weeks).toHaveLength(5);
+    expect(weeks[0]).toHaveTextContent('30/11 – 06/12');
+    expect(weeks[0]).toHaveTextContent('Semana 1 do ciclo');
+    const doc = appStore.getState().document;
+    for (const w of weeks) {
+      const rows = within(w).getAllByTestId('print-row');
+      expect(rows).toHaveLength(doc.employees.length);
+      for (const row of rows) expect(row.querySelectorAll('td')).toHaveLength(7);
+    }
+    // Feriado de 25/12 (sexta): coluna 4 da semana de 21/12.
+    for (const row of within(weeks[3]).getAllByTestId('print-row')) expect(row.querySelectorAll('td')[4]).toHaveTextContent('Fer.');
+    // Ajuste da data: Rosa de folga em 02/12 (quarta).
+    const rosa = within(weeks[0]).getAllByTestId('print-row').find((r) => r.textContent?.includes('Rosa'))!;
+    expect(rosa.querySelectorAll('td')[2]).toHaveTextContent('F');
+    expect(sheet.textContent).not.toMatch(/alerta/i);
+  });
+
+  it('imagens por semana com datas reais; dá para voltar ao ciclo', async () => {
+    setShare(true, () => Promise.resolve());
+    render(<ExportPanel month={{ year: 2026, month: 12 }} onClose={vi.fn()} />);
+    await screen.findByText('Imagem de 30/11 – 06/12 pronta.');
+    expect(weekImage()).toHaveTextContent('Escala 30/11 – 06/12');
+    expect(weekImage()).toHaveTextContent('Seg 30/11');
+    await userEvent.click(screen.getByRole('button', { name: '07/12 – 13/12' }));
+    await screen.findByText('Imagem de 07/12 – 13/12 pronta.');
+    await userEvent.click(screen.getByRole('button', { name: 'Compartilhar' }));
+    const arg = (navigator.share as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0] as ShareData;
+    expect(arg.title).toBe('Mercado do exemplo — Escala 07/12 – 13/12');
+    expect(arg.files?.[0].name).toBe('escala-mercado-do-exemplo-2026-12-07.png');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Ciclo de 3 semanas' }));
+    await screen.findByText('Imagem da semana 1 pronta.');
+    expect(printSheet()).not.toHaveAttribute('data-scope');
+    expect(printSheet()).toHaveTextContent('Semana 3');
+  });
+});
+
 describe('LegalNotice', () => {
   it('mostra o aviso com as datas e o link oficial', () => {
     render(<LegalNotice />);

@@ -600,3 +600,76 @@
   margin: 0; padding: var(--s-3); border-radius: var(--radius-sm);
   background: var(--paper-2); font-weight: 600;
 }
+
+/* ---------- Visão Ciclo | Mês ---------- */
+.view-switch {
+  display: inline-grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  justify-self: start; align-self: flex-start;
+  border: 1px solid var(--line); border-radius: 999px;
+  overflow: hidden; background: var(--card);
+}
+.view-switch-btn {
+  min-height: var(--tap); min-width: 84px; padding: 0 var(--s-4);
+  border: 0; background: transparent; color: var(--ink);
+  font: 700 14px/1 var(--font-narrow); cursor: pointer;
+}
+.view-switch-btn + .view-switch-btn { border-left: 1px solid var(--line); }
+.view-switch-btn[aria-pressed='true'] { background: var(--brand); color: var(--brand-ink); }
+.view-switch-btn:focus-visible { outline: 3px solid var(--ink); outline-offset: -3px; }
+
+/* ---------- Visão Mês ---------- */
+.mv { display: flex; flex-direction: column; gap: var(--s-5); min-width: 0; }
+.cov.mv-sum { display: flex; flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 0; }
+.mv-sum-main { display: flex; align-items: center; gap: var(--s-4); padding: var(--s-4) var(--s-5); }
+.mv-sum.cov-ok { padding: 0; }
+.cov.mv-sum .cov-lunch { margin: 0; width: 100%; flex: none; padding-left: var(--s-5); }
+.mv-sum .cov-num { flex: none; }
+.mv-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s-3); }
+.mv-monthnav { display: flex; align-items: center; gap: var(--s-2); flex: 1 1 auto; justify-content: flex-end; min-width: 0; }
+.mv-monthbtn { min-width: var(--tap); min-height: var(--tap); font-size: 20px; line-height: 1; }
+.mv-month { font-size: 18px; font-weight: 700; text-align: center; min-width: 0; flex: 0 1 auto; white-space: nowrap; }
+@media (max-width: 479px) {
+  .mv-bar { flex-direction: column; align-items: stretch; }
+  .mv-monthnav { justify-content: space-between; }
+}
+.mv-cycle { display: flex; flex-direction: column; gap: var(--s-2); padding: var(--s-3) var(--s-4); background: var(--card); border: 1px solid var(--rule); border-radius: var(--radius); }
+.mv-cycle-line { margin: 0; }
+.mv-cycle-line .link-btn { margin-left: var(--s-1); }
+.mv-cycle-field { max-width: 240px; }
+.mv-cycle-hint { margin: 0; font-size: 13px; }
+.mv-week { min-width: 0; display: flex; flex-direction: column; gap: var(--s-2); }
+.mv-week-title { font: 700 15px/1.3 var(--font-sans); }
+.mv-week-cycle { font-weight: 500; color: var(--ink-2); }
+
+/* Datas fora do mês: apagadas, ainda legíveis. */
+.wg-cell.is-out, .wg-dayhead.is-out { opacity: 0.45; }
+.wg-dayhead.is-holiday { background: var(--closed); }
+.wg-dayhead.is-holiday .wg-dayhead-more { color: var(--ink-2); text-decoration: none; }
+.wg-holiday {
+  background: repeating-linear-gradient(-45deg, var(--closed) 0 5px, var(--paper-2) 5px 9px);
+}
+.wg-holiday .wg-closed-text { font-size: 9.5px; letter-spacing: 0; }
+/* Ajustado nesta data: anel no canto de cima (o ponto cheio ao lado é o horário ajustado). */
+.wg-btn.is-dated .wg-adjusted { left: 13px; }
+.wg-dated {
+  position: absolute; top: 3px; left: 3px;
+  width: 7px; height: 7px; border-radius: 50%;
+  border: 1.5px solid var(--ink); background: var(--card);
+}
+.legend-dated { background: var(--card); border: 1px solid var(--line); }
+.legend-dot { display: block; width: 7px; height: 7px; border-radius: 50%; border: 1.5px solid var(--ink); }
+.legend-holiday { background: var(--closed); color: var(--ink-2); }
+
+.cell-date-note {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s-2);
+  padding: var(--s-2) var(--s-3); border-radius: var(--radius-sm); background: var(--paper-2);
+}
+.cell-date-note p { margin: 0; font-size: 14px; }
+.cell-date-flag { font-weight: 700; }
+.date-holiday {
+  display: flex; align-items: center; gap: var(--s-3);
+  min-height: var(--tap); padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--line); border-radius: var(--radius-sm);
+  font-weight: 600; cursor: pointer;
+}
+.date-holiday input { width: 22px; height: 22px; accent-color: var(--brand); flex: none; }

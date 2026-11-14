@@ -14,6 +14,16 @@ export interface DayTimelineProps {
   onBack(): void;
   onOpenCell(employeeId: string, day: number): void;
   onOpenGap(key: string): void;
+  /**
+   * Visão Mês: título com a data real, troca de dia por data e feriado. As marcações de almoço
+   * ("coberto por mim/família") são do ciclo e ficam só para leitura aqui.
+   */
+  dateMode?: {
+    title: string;
+    holiday: boolean;
+    prev?: { label: string; go(): void };
+    next?: { label: string; go(): void };
+  };
 }
 
 /** "balconista" → "balconistas"; "auxiliar" → "auxiliares". */
@@ -46,7 +56,7 @@ interface Segment {
 }
 
 /** Visão do dia: uma barra por pessoa da entrada à saída, com o almoço, agrupada pela função contada no dia. */
-export function DayTimeline({ day, doc, derived, onChangeDay, onBack, onOpenCell, onOpenGap }: DayTimelineProps) {
+export function DayTimeline({ day, doc, derived, onChangeDay, onBack, onOpenCell, onOpenGap, dateMode }: DayTimelineProps) {
   const { config, employees, schedule } = doc;
   const titleRef = useRef<HTMLHeadingElement>(null);
   const wd = weekdayOf(day);
@@ -137,32 +147,46 @@ export function DayTimeline({ day, doc, derived, onChangeDay, onBack, onOpenCell
   const working = new Set(rows.map((b) => b.employeeId));
   const off = employees.filter((e) => !working.has(e.id) && schedule?.[e.id]?.[day]?.status === 'off');
   const closed = !storeDay?.open;
-  const title = `${WEEKDAY_NAMES[wd]}, dia ${day + 1} — Semana ${weekOf(day) + 1}`;
+  const title = dateMode?.title ?? `${WEEKDAY_NAMES[wd]}, dia ${day + 1} — Semana ${weekOf(day) + 1}`;
   const prev = day - 1;
   const next = day + 1;
+  const prevNav = dateMode
+    ? { disabled: !dateMode.prev, label: dateMode.prev?.label ?? 'Dia anterior', go: () => dateMode.prev?.go() }
+    : {
+        disabled: prev < 0,
+        label: prev >= 0 ? `Dia anterior: ${WEEKDAY_NAMES[weekdayOf(prev)]}, dia ${prev + 1}` : 'Dia anterior',
+        go: () => onChangeDay(prev),
+      };
+  const nextNav = dateMode
+    ? { disabled: !dateMode.next, label: dateMode.next?.label ?? 'Próximo dia', go: () => dateMode.next?.go() }
+    : {
+        disabled: next >= CYCLE_DAYS,
+        label: next < CYCLE_DAYS ? `Próximo dia: ${WEEKDAY_NAMES[weekdayOf(next)]}, dia ${next + 1}` : 'Próximo dia',
+        go: () => onChangeDay(next),
+      };
 
   return (
     <section className="dt" aria-labelledby="dt-title">
       <div className="dt-nav">
         <button type="button" className="btn btn-sm dt-back" onClick={onBack}>
-          <span aria-hidden="true">‹</span> Voltar para a semana
+          <span aria-hidden="true">‹</span> {dateMode ? 'Voltar para o mês' : 'Voltar para a semana'}
         </button>
         <div className="dt-step" role="group" aria-label="Trocar de dia">
           <button
             type="button"
             className="btn btn-sm dt-step-btn"
-            disabled={prev < 0}
-            aria-label={prev >= 0 ? `Dia anterior: ${WEEKDAY_NAMES[weekdayOf(prev)]}, dia ${prev + 1}` : 'Dia anterior'}
-            onClick={() => onChangeDay(prev)}
+            disabled={prevNav.disabled}
+            aria-label={prevNav.label}
+            onClick={prevNav.go}
           >
             ‹
           </button>
           <button
             type="button"
             className="btn btn-sm dt-step-btn"
-            disabled={next >= CYCLE_DAYS}
-            aria-label={next < CYCLE_DAYS ? `Próximo dia: ${WEEKDAY_NAMES[weekdayOf(next)]}, dia ${next + 1}` : 'Próximo dia'}
-            onClick={() => onChangeDay(next)}
+            disabled={nextNav.disabled}
+            aria-label={nextNav.label}
+            onClick={nextNav.go}
           >
             ›
           </button>
@@ -172,7 +196,9 @@ export function DayTimeline({ day, doc, derived, onChangeDay, onBack, onOpenCell
       <h2 id="dt-title" ref={titleRef} tabIndex={-1} className="dt-title">
         {title}
       </h2>
-      {storeDay?.open ? (
+      {dateMode?.holiday ? (
+        <p className="dt-closed">Loja fechada nesta data (feriado).</p>
+      ) : storeDay?.open ? (
         <p className="hint dt-sub">
           Loja aberta das <span className="mono">{formatTime(storeDay.opensAt)}</span> às{' '}
           <span className="mono">{formatTime(storeDay.closesAt)}</span>.
@@ -291,16 +317,18 @@ export function DayTimeline({ day, doc, derived, onChangeDay, onBack, onOpenCell
                           <span className="dt-gap-text">
                             <span aria-hidden="true">✓</span> {s.text}
                           </span>
-                          <button type="button" className="link-btn dt-gap-action" onClick={() => toggleLunchCover(s.lunchGap!)}>
-                            Desfazer
-                          </button>
+                          {!dateMode && (
+                            <button type="button" className="link-btn dt-gap-action" onClick={() => toggleLunchCover(s.lunchGap!)}>
+                              Desfazer
+                            </button>
+                          )}
                         </div>
                       ) : (
                         <div className="dt-gap">
                           <span className="dt-gap-text">
                             <span aria-hidden="true">▲</span> {s.text}
                           </span>
-                          {s.lunchGap && (
+                          {s.lunchGap && !dateMode && (
                             <button type="button" className="btn btn-sm dt-gap-action" onClick={() => toggleLunchCover(s.lunchGap!)}>
                               Coberto por mim/família
                             </button>
@@ -316,7 +344,10 @@ export function DayTimeline({ day, doc, derived, onChangeDay, onBack, onOpenCell
         </div>
       )}
 
-      {!closed && groups.length === 0 && <p className="hint">Ninguém trabalha neste dia.</p>}
+      {!closed && !dateMode?.holiday && groups.length === 0 && <p className="hint">Ninguém trabalha neste dia.</p>}
+      {dateMode && groups.some((g) => g.segments.some((x) => x.lunchGap)) && (
+        <p className="hint">Para marcar um almoço como coberto por você ou pela família, use a visão Ciclo.</p>
+      )}
 
       {off.length > 0 && (
         <p className="dt-off">

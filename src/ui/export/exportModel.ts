@@ -1,4 +1,6 @@
-import { computeCoverage } from '../../domain/coverage';
+import { computeCoverage, type CoverageResult } from '../../domain/coverage';
+import { formatDayMonth, monthLabel } from '../../domain/dates';
+import { isInMonth, projectMonth } from '../../domain/month';
 import { flexFor, flexTag } from '../flex';
 import {
   SINGLE_SHIFT_NAME,
@@ -8,7 +10,18 @@ import {
   isVirtualShiftId,
   singleShiftOf,
 } from '../../domain/time';
-import { CYCLE_DAYS, WEEKDAY_SHORT, type AppDocument, type Shift, type Weekday, type WorkHours } from '../../domain/types';
+import {
+  CYCLE_DAYS,
+  DAYS_PER_WEEK,
+  WEEKDAY_SHORT,
+  type AppDocument,
+  type ISODate,
+  type Schedule,
+  type Shift,
+  type StoreConfig,
+  type Weekday,
+  type WorkHours,
+} from '../../domain/types';
 
 /**
  * Modelo só com o que pode sair na exportação (R20).
@@ -23,7 +36,8 @@ export type ExportCell =
       flex?: string;
     }
   | { kind: 'off' }
-  | { kind: 'closed' };
+  /** `holiday`: loja fechada só naquela data (visão Mês). */
+  | { kind: 'closed'; holiday?: boolean };
 
 export interface ExportRow {
   id: string;
@@ -89,15 +103,29 @@ export function displayStoreName(document: AppDocument): string {
   return document.config.name.trim() || 'Escala';
 }
 
-export function buildExportModel(document: AppDocument): ExportModel {
-  const { config, employees, schedule, marks } = document;
+interface Helpers {
+  initialOf(shiftId: string): string;
+  roleName: Map<string, string>;
+  shiftById: Map<string, Shift>;
+  nameById: Map<string, string>;
+}
+
+function helpers(document: AppDocument): Helpers {
+  const { config, employees } = document;
   const initials = shiftInitials(config.shifts);
   const uInitial = singleInitial(initials);
-  const initialOf = (shiftId: string) => (isVirtualShiftId(shiftId) ? uInitial : (initials.get(shiftId) ?? '?'));
-  const roleName = new Map(config.roles.map((r) => [r.id, r.name]));
-  const shiftById = new Map(config.shifts.map((s) => [s.id, s]));
-  const nameById = new Map(employees.map((e) => [e.id, e.name]));
+  return {
+    initialOf: (shiftId) => (isVirtualShiftId(shiftId) ? uInitial : (initials.get(shiftId) ?? '?')),
+    roleName: new Map(config.roles.map((r) => [r.id, r.name])),
+    shiftById: new Map(config.shifts.map((s) => [s.id, s])),
+    nameById: new Map(employees.map((e) => [e.id, e.name])),
+  };
+}
 
+function buildLegend(document: AppDocument): LegendItem[] {
+  const { config } = document;
+  const initials = shiftInitials(config.shifts);
+  const uInitial = singleInitial(initials);
   const legend: LegendItem[] = config.shifts.map((s) => ({
     initial: initials.get(s.id) ?? '?',
     name: s.name,
@@ -109,16 +137,25 @@ export function buildExportModel(document: AppDocument): ExportModel {
     return shift ? [`${label} ${formatRange(shift)}`] : [];
   });
   if (singles.length > 0) legend.push({ initial: uInitial, name: SINGLE_SHIFT_NAME, times: singles.join(', ') });
+  return legend;
+}
 
-  if (!schedule) {
-    return { storeName: displayStoreName(document), hasSchedule: false, legend, rows: [], gapRows: [] };
-  }
-
-  const coverage = computeCoverage({ config, employees, schedule, marks });
-
+/**
+ * Linhas das pessoas e das vagas para os dias `days` (índices do ciclo, ou do documento sintético de uma
+ * semana do mês). As células saem na ordem de `days`.
+ */
+function buildBody(
+  h: Helpers,
+  config: StoreConfig,
+  employees: AppDocument['employees'],
+  schedule: Schedule,
+  coverage: CoverageResult,
+  days: number[],
+): { rows: ExportRow[]; gapRows: GapRow[] } {
+  const position = new Map(days.map((d, i) => [d, i]));
   const rows: ExportRow[] = employees.map((e) => {
     const row = schedule[e.id] ?? [];
-    const cells: ExportCell[] = Array.from({ length: CYCLE_DAYS }, (_, day) => {
+    const cells: ExportCell[] = days.map((day) => {
       const cell = row[day];
       if (!cell || cell.status === 'closed') return { kind: 'closed' };
       if (cell.status === 'off') return { kind: 'off' };
@@ -126,12 +163,12 @@ export function buildExportModel(document: AppDocument): ExportModel {
       const flex = flexFor(coverage, e.id, day);
       return {
         kind: 'work',
-        initial: initialOf(effectiveShiftId(config, e, cell, day)),
+        initial: h.initialOf(effectiveShiftId(config, e, cell, day)),
         times: hours ? formatRange(hours) : '',
-        ...(flex ? { flex: flexTag(roleName.get(flex.roleId) ?? '') } : {}),
+        ...(flex ? { flex: flexTag(h.roleName.get(flex.roleId) ?? '') } : {}),
       };
     });
-    return { id: e.id, name: e.name, roleName: roleName.get(e.roleId) ?? '', cells };
+    return { id: e.id, name: e.name, roleName: h.roleName.get(e.roleId) ?? '', cells };
   });
 
   const all = [
@@ -140,9 +177,9 @@ export function buildExportModel(document: AppDocument): ExportModel {
       gap: c,
       cell: (c.mark.coveredBy.kind === 'owner'
         ? { kind: 'owner', label: OWNER_LABEL }
-        : { kind: 'employee', label: nameById.get(c.mark.coveredBy.employeeId) ?? '' }) as GapCell,
+        : { kind: 'employee', label: h.nameById.get(c.mark.coveredBy.employeeId) ?? '' }) as GapCell,
     })),
-  ];
+  ].filter((x) => position.has(x.gap.day));
 
   // Uma linha por função + turno + número da vaga, na ordem da configuração.
   const groups = new Map<string, GapRow>();
@@ -153,12 +190,12 @@ export function buildExportModel(document: AppDocument): ExportModel {
     const key = `${virtual ? 'unico' : gap.shiftId}|${gap.roleId}|${gap.slot}`;
     let group = groups.get(key);
     if (!group) {
-      const shiftName = virtual ? SINGLE_SHIFT_NAME : (shiftById.get(gap.shiftId)?.name ?? '');
+      const shiftName = virtual ? SINGLE_SHIFT_NAME : (h.shiftById.get(gap.shiftId)?.name ?? '');
       const slotText = gap.slot > 0 ? ` (${gap.slot + 1}ª vaga)` : '';
       group = {
         key,
-        label: `${roleName.get(gap.roleId) ?? ''} · ${shiftName}${slotText}`,
-        cells: Array.from({ length: CYCLE_DAYS }, () => ({ kind: 'none' }) as GapCell),
+        label: `${h.roleName.get(gap.roleId) ?? ''} · ${shiftName}${slotText}`,
+        cells: days.map(() => ({ kind: 'none' }) as GapCell),
       };
       groups.set(key, group);
       order.push({
@@ -168,10 +205,70 @@ export function buildExportModel(document: AppDocument): ExportModel {
         slot: gap.slot,
       });
     }
-    group.cells[gap.day] = cell;
+    group.cells[position.get(gap.day)!] = cell;
   }
   order.sort((a, b) => a.shiftIdx - b.shiftIdx || a.roleIdx - b.roleIdx || a.slot - b.slot);
-  const gapRows = order.map((o) => groups.get(o.key)!);
+  return { rows, gapRows: order.map((o) => groups.get(o.key)!) };
+}
 
+export function buildExportModel(document: AppDocument): ExportModel {
+  const { config, employees, schedule, marks } = document;
+  const legend = buildLegend(document);
+  if (!schedule) {
+    return { storeName: displayStoreName(document), hasSchedule: false, legend, rows: [], gapRows: [] };
+  }
+  const coverage = computeCoverage({ config, employees, schedule, marks });
+  const days = Array.from({ length: CYCLE_DAYS }, (_, d) => d);
+  const { rows, gapRows } = buildBody(helpers(document), config, employees, schedule, coverage, days);
   return { storeName: displayStoreName(document), hasSchedule: true, legend, rows, gapRows };
+}
+
+/** Uma semana real (segunda a domingo) da exportação do mês. */
+export interface MonthExportWeek {
+  monday: ISODate;
+  dates: ISODate[];
+  /** "30/11 – 06/12" */
+  label: string;
+  cycleWeek: number;
+  /** "Seg 30/11" */
+  headers: string[];
+  /** Data dentro do mês (fora dele, a coluna sai apagada). */
+  inMonth: boolean[];
+  rows: ExportRow[];
+  gapRows: GapRow[];
+}
+
+export interface MonthExportModel {
+  storeName: string;
+  /** "Dezembro de 2026" */
+  monthLabel: string;
+  legend: LegendItem[];
+  weeks: MonthExportWeek[];
+}
+
+/** Exportação do mês: o ciclo projetado nas datas, com feriados e ajustes da data. Sem alertas (R20). */
+export function buildMonthExportModel(document: AppDocument, year: number, month: number): MonthExportModel | null {
+  const projection = projectMonth(document, year, month);
+  if (!projection) return null;
+  const h = helpers(document);
+  const weeks = projection.weeks.map((w): MonthExportWeek => {
+    const days = Array.from({ length: DAYS_PER_WEEK }, (_, i) => w.firstDay + i);
+    const synth = w.doc;
+    const body = buildBody(h, synth.config, synth.employees, synth.schedule!, w.coverage, days);
+    const rows = body.rows.map((r) => ({
+      ...r,
+      cells: r.cells.map((c, i): ExportCell => (w.holidays[i] ? { kind: 'closed', holiday: true } : c)),
+    }));
+    return {
+      monday: w.monday,
+      dates: w.dates,
+      label: `${formatDayMonth(w.dates[0])} – ${formatDayMonth(w.dates[6])}`,
+      cycleWeek: w.cycleWeek,
+      headers: w.dates.map((d, i) => `${WEEKDAY_SHORT[i]} ${formatDayMonth(d)}`),
+      inMonth: w.dates.map((d) => isInMonth(d, year, month)),
+      rows,
+      gapRows: body.gapRows,
+    };
+  });
+  return { storeName: displayStoreName(document), monthLabel: monthLabel(year, month), legend: buildLegend(document), weeks };
 }

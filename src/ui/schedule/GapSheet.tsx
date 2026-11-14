@@ -9,6 +9,11 @@ export interface GapSheetProps {
   /** null quando a vaga deixou de faltar depois de uma edição. */
   gap: Gap | null;
   mark?: CoverageMark;
+  /**
+   * Visão Mês: só mostra a vaga (quem cobre é marcado na visão Ciclo, e vale para todas as repetições).
+   * `kicker` traz a data real.
+   */
+  readOnly?: { kicker: string; note: string };
   onClose(): void;
 }
 
@@ -18,7 +23,7 @@ function sameCoverer(a: Coverer | undefined, b: Coverer) {
 }
 
 /** Folha de um buraco: marcar "coberto por mim/família" ou por alguém da equipe (R14, R14b). */
-export function GapSheet({ gap, mark, onClose }: GapSheetProps) {
+export function GapSheet({ gap, mark, readOnly, onClose }: GapSheetProps) {
   const doc = useAppStore((s) => s.document);
 
   const footer = (
@@ -65,7 +70,7 @@ export function GapSheet({ gap, mark, onClose }: GapSheetProps) {
   return (
     <Sheet
       tone="gap"
-      kicker={`Semana ${weekOf(gap.day) + 1} · ${WEEKDAY_NAMES[weekdayOf(gap.day)]}`}
+      kicker={readOnly?.kicker ?? `Semana ${weekOf(gap.day) + 1} · ${WEEKDAY_NAMES[weekdayOf(gap.day)]}`}
       title={`Falta ${role.toLowerCase()} · ${shiftName(config, gap.shiftId).toLowerCase()}`}
       onClose={onClose}
       footer={footer}
@@ -82,45 +87,51 @@ export function GapSheet({ gap, mark, onClose }: GapSheetProps) {
         {coveredName ? `Coberto por ${coveredName}` : 'Sem ninguém nesta vaga'}
       </p>
 
-      <button
-        type="button"
-        className="btn gap-owner"
-        aria-pressed={sameCoverer(mark?.coveredBy, { kind: 'owner' })}
-        onClick={() => setCoverer({ kind: 'owner' })}
-      >
-        Coberto por mim/família
-      </button>
+      {readOnly ? (
+        <p className="hint">{readOnly.note}</p>
+      ) : (
+        <>
+          <button
+            type="button"
+            className="btn gap-owner"
+            aria-pressed={sameCoverer(mark?.coveredBy, { kind: 'owner' })}
+            onClick={() => setCoverer({ kind: 'owner' })}
+          >
+            Coberto por mim/família
+          </button>
 
-      <h3 className="sheet-subtitle">Coberto por</h3>
-      <ul className="coverer-list">
-        {people.map(({ e, off, status }) => {
-          const pressed = sameCoverer(mark?.coveredBy, { kind: 'employee', employeeId: e.id });
-          return (
-            <li key={e.id}>
-              <button
-                type="button"
-                className={`coverer${off ? ' is-off' : ''}`}
-                aria-pressed={pressed}
-                aria-label={`${e.name}, ${status}`}
-                onClick={() => setCoverer({ kind: 'employee', employeeId: e.id })}
-              >
-                <span className="coverer-name">{e.name}</span>
-                <span className="coverer-status">{status}</span>
-                {pressed && (
-                  <span className="coverer-check" aria-hidden="true">
-                    ✓
-                  </span>
-                )}
-              </button>
-            </li>
-          );
-        })}
-      </ul>
+          <h3 className="sheet-subtitle">Coberto por</h3>
+          <ul className="coverer-list">
+            {people.map(({ e, off, status }) => {
+              const pressed = sameCoverer(mark?.coveredBy, { kind: 'employee', employeeId: e.id });
+              return (
+                <li key={e.id}>
+                  <button
+                    type="button"
+                    className={`coverer${off ? ' is-off' : ''}`}
+                    aria-pressed={pressed}
+                    aria-label={`${e.name}, ${status}`}
+                    onClick={() => setCoverer({ kind: 'employee', employeeId: e.id })}
+                  >
+                    <span className="coverer-name">{e.name}</span>
+                    <span className="coverer-status">{status}</span>
+                    {pressed && (
+                      <span className="coverer-check" aria-hidden="true">
+                        ✓
+                      </span>
+                    )}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
 
-      {mark && (
-        <button type="button" className="btn btn-ghost gap-undo" onClick={clearMark}>
-          Desfazer marcação
-        </button>
+          {mark && (
+            <button type="button" className="btn btn-ghost gap-undo" onClick={clearMark}>
+              Desfazer marcação
+            </button>
+          )}
+        </>
       )}
     </Sheet>
   );

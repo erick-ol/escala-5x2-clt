@@ -4,7 +4,7 @@ import { toBlob } from 'html-to-image';
 import { DAYS_PER_WEEK, WEEKDAY_SHORT, WEEKS } from '../../domain/types';
 import { GapCellContent, ScheduleCellContent, cellClass } from './PrintSheet';
 import { downloadBlob, slugify } from './download';
-import type { ExportModel } from './exportModel';
+import type { ExportModel, ExportRow, GapRow, LegendItem, MonthExportModel } from './exportModel';
 
 export const IMAGE_WIDTH = 1080;
 
@@ -21,51 +21,103 @@ export function imageFileName(storeName: string, week: number): string {
   return `escala-${slugify(storeName)}-semana-${week + 1}.png`;
 }
 
+/** Uma imagem (uma semana): do ciclo ou de datas reais do mês. */
+export interface ImagePage {
+  key: string;
+  /** Texto do botão de escolha ("Semana 1", "30/11 – 06/12"). */
+  button: string;
+  /** Linha abaixo do nome da loja ("Semana 1 de 3", "Escala 30/11 – 06/12"). */
+  heading: string;
+  shareTitle: string;
+  fileName: string;
+  /** Aviso quando a imagem fica pronta. */
+  ready: string;
+  /** Cabeçalho das 7 colunas. */
+  headers: string[];
+  /** Colunas apagadas (datas fora do mês). */
+  dim?: boolean[];
+  rows: ExportRow[];
+  gapRows: GapRow[];
+}
+
+export function cyclePages(model: ExportModel): ImagePage[] {
+  return Array.from({ length: WEEKS }, (_, week) => {
+    const from = week * DAYS_PER_WEEK;
+    const slice = <T,>(cells: T[]) => cells.slice(from, from + DAYS_PER_WEEK);
+    return {
+      key: `s${week}`,
+      button: `Semana ${week + 1}`,
+      heading: `Semana ${week + 1} de ${WEEKS}`,
+      shareTitle: imageTitle(model.storeName, week),
+      fileName: imageFileName(model.storeName, week),
+      ready: `Imagem da semana ${week + 1} pronta.`,
+      headers: [...WEEKDAY_SHORT],
+      rows: model.rows.map((r) => ({ ...r, cells: slice(r.cells) })),
+      gapRows: model.gapRows.map((r) => ({ ...r, cells: slice(r.cells) })),
+    };
+  });
+}
+
+export function monthPages(model: MonthExportModel): ImagePage[] {
+  return model.weeks.map((w) => ({
+    key: w.monday,
+    button: w.label,
+    heading: `Escala ${w.label}`,
+    shareTitle: `${model.storeName} — Escala ${w.label}`,
+    fileName: `escala-${slugify(model.storeName)}-${w.monday}.png`,
+    ready: `Imagem de ${w.label} pronta.`,
+    headers: w.headers,
+    dim: w.inMonth.map((x) => !x),
+    rows: w.rows,
+    gapRows: w.gapRows,
+  }));
+}
+
 /** Conteúdo da imagem de uma semana (retrato, 1080px). Renderizado fora da tela só para virar PNG. */
-function WeekImage({ model, week }: { model: ExportModel; week: number }) {
-  const from = week * DAYS_PER_WEEK;
-  const range = Array.from({ length: DAYS_PER_WEEK }, (_, i) => from + i);
+function WeekImage({ storeName, legend, page }: { storeName: string; legend: LegendItem[]; page: ImagePage }) {
+  const dim = (i: number) => (page.dim?.[i] ? ' wi-out' : '');
+  const cells = page.rows.flatMap((r) => r.cells);
   return (
     <div className="wi">
       <header className="wi-header">
-        <h1 className="wi-title">{model.storeName}</h1>
-        <p className="wi-week">
-          Semana {week + 1} de {WEEKS}
-        </p>
+        <h1 className="wi-title">{storeName}</h1>
+        <p className="wi-week">{page.heading}</p>
       </header>
       <table className="wi-table">
         <thead>
           <tr>
             <th className="wi-name" />
-            {range.map((d, i) => (
-              <th key={d}>{WEEKDAY_SHORT[i]}</th>
+            {page.headers.map((text, i) => (
+              <th key={i} className={dim(i).trim() || undefined}>
+                {text}
+              </th>
             ))}
           </tr>
         </thead>
         <tbody>
-          {model.rows.map((row) => (
+          {page.rows.map((row) => (
             <tr key={row.id}>
               <th scope="row" className="wi-name">
                 {row.name}
                 {row.roleName && <small>{row.roleName}</small>}
               </th>
-              {range.map((d) => (
-                <td key={d} className={cellClass(row.cells[d])}>
-                  <ScheduleCellContent cell={row.cells[d]} />
+              {row.cells.map((cell, i) => (
+                <td key={i} className={`${cellClass(cell)}${dim(i)}`}>
+                  <ScheduleCellContent cell={cell} />
                 </td>
               ))}
             </tr>
           ))}
-          {model.gapRows
-            .filter((row) => range.some((d) => row.cells[d].kind !== 'none'))
+          {page.gapRows
+            .filter((row) => row.cells.some((c) => c.kind !== 'none'))
             .map((row) => (
               <tr key={row.key} className="wi-gap-row">
                 <th scope="row" className="wi-name">
                   {row.label}
                 </th>
-                {range.map((d) => (
-                  <td key={d} className={`xp-gap xp-gap-${row.cells[d].kind}`}>
-                    <GapCellContent cell={row.cells[d]} />
+                {row.cells.map((cell, i) => (
+                  <td key={i} className={`xp-gap xp-gap-${cell.kind}${dim(i)}`}>
+                    <GapCellContent cell={cell} />
                   </td>
                 ))}
               </tr>
@@ -73,7 +125,7 @@ function WeekImage({ model, week }: { model: ExportModel; week: number }) {
         </tbody>
       </table>
       <ul className="wi-legend">
-        {model.legend.map((l) => (
+        {legend.map((l) => (
           <li key={l.initial}>
             <b>{l.initial}</b> {l.name} <span className="mono">{l.times}</span>
           </li>
@@ -84,7 +136,12 @@ function WeekImage({ model, week }: { model: ExportModel; week: number }) {
         <li>
           <b>—</b> Loja fechada
         </li>
-        {model.rows.some((r) => r.cells.some((c) => c.kind === 'work' && c.flex)) && (
+        {cells.some((c) => c.kind === 'closed' && c.holiday) && (
+          <li>
+            <b>Fer.</b> Feriado
+          </li>
+        )}
+        {cells.some((c) => c.kind === 'work' && c.flex) && (
           <li>
             <b>→</b> cobrindo outra função
           </li>
@@ -102,9 +159,17 @@ async function waitForFonts(): Promise<void> {
   }
 }
 
+export interface ImageExportProps {
+  storeName: string;
+  legend: LegendItem[];
+  pages: ImagePage[];
+}
+
 /** Imagem para WhatsApp, uma por semana (KTD12). O PNG é gerado antes do toque em "Compartilhar". */
-export function ImageExport({ model }: { model: ExportModel }) {
-  const [week, setWeek] = useState(0);
+export function ImageExport({ storeName, legend, pages }: ImageExportProps) {
+  const [index, setIndex] = useState(0);
+  const week = Math.min(index, pages.length - 1);
+  const page = pages[week];
   const [state, setState] = useState<ImageState>({ status: 'pending' });
   const [notice, setNotice] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -128,7 +193,7 @@ export function ImageExport({ model }: { model: ExportModel }) {
         });
         if (!blob) throw new Error('imagem vazia');
         if (cancelled) return;
-        const file = new File([blob], imageFileName(model.storeName, week), { type: 'image/png' });
+        const file = new File([blob], page.fileName, { type: 'image/png' });
         setState({ status: 'ready', file });
       } catch {
         if (!cancelled) setState({ status: 'error' });
@@ -137,12 +202,12 @@ export function ImageExport({ model }: { model: ExportModel }) {
     return () => {
       cancelled = true;
     };
-  }, [model, week, attempt]);
+  }, [page, attempt]);
 
   const share = async () => {
     if (state.status !== 'ready') return;
     const { file } = state;
-    const title = imageTitle(model.storeName, week);
+    const title = page.shareTitle;
     const fallback = () => {
       downloadBlob(file, file.name);
       setNotice('Imagem baixada. Envie pelo WhatsApp a partir dos seus arquivos ou fotos.');
@@ -173,22 +238,22 @@ export function ImageExport({ model }: { model: ExportModel }) {
         <span id={labelId} className="label">
           Semana
         </span>
-        {Array.from({ length: WEEKS }, (_, w) => (
+        {pages.map((p, w) => (
           <button
-            key={w}
+            key={p.key}
             type="button"
             className={w === week ? 'week-btn is-active' : 'week-btn'}
             aria-pressed={w === week}
-            onClick={() => setWeek(w)}
+            onClick={() => setIndex(w)}
           >
-            Semana {w + 1}
+            {p.button}
           </button>
         ))}
       </div>
 
       <div className="image-export-status" aria-live="polite">
         {state.status === 'pending' && <p className="hint">Gerando imagem…</p>}
-        {state.status === 'ready' && <p className="hint">Imagem da semana {week + 1} pronta.</p>}
+        {state.status === 'ready' && <p className="hint">{page.ready}</p>}
       </div>
       {state.status === 'error' && (
         <p role="alert" className="error-text">
@@ -211,7 +276,7 @@ export function ImageExport({ model }: { model: ExportModel }) {
       {createPortal(
         <div className="image-offscreen" aria-hidden="true">
           <div ref={nodeRef} data-testid="week-image" style={{ width: IMAGE_WIDTH }}>
-            <WeekImage model={model} week={week} />
+            <WeekImage storeName={storeName} legend={legend} page={page} />
           </div>
         </div>,
         document.body,

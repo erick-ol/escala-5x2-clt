@@ -1,4 +1,6 @@
-import { useId, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
+import { formatDayMonth, formatFullDate } from '../../domain/dates';
+import { cellOnDate } from '../../domain/month';
 import type { LegalAlert } from '../../domain/rules';
 import {
   MINUTES_PER_DAY,
@@ -15,7 +17,7 @@ import {
   weekdayOf,
   workedMinutes,
 } from '../../domain/time';
-import { WEEKDAY_NAMES, type Cell, type CoverageMark, type WorkHours } from '../../domain/types';
+import { WEEKDAY_NAMES, type Cell, type CoverageMark, type DateOverride, type ISODate, type WorkHours } from '../../domain/types';
 import { appStore, useAppStore } from '../../state/store';
 import { Sheet } from './Sheet';
 import { maskTime, TIME_FIELD_PROPS } from '../timeMask';
@@ -29,6 +31,11 @@ export interface CellEditorProps {
   coveringRole?: string;
   /** Início do almoço planejado pelo site para este dia (usado quando não há um horário escolhido). */
   plannedBreakStart?: number | null;
+  /**
+   * Visão Mês: edita só esta data (vira um ajuste da data; o ciclo não muda). `day` continua sendo o dia
+   * do ciclo que cai nesta data.
+   */
+  date?: ISODate;
   onClose(): void;
 }
 
@@ -36,7 +43,10 @@ interface Snapshot {
   cell: Cell;
   customHours: WorkHours | undefined;
   marks: CoverageMark[];
+  dateOverrides: DateOverride[];
 }
+
+const sameCell = (a: Cell | undefined, b: Cell | undefined) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 
 /** Célula sem o ajuste de horário do dia (sem deixar a chave `hours: undefined`). */
 function withoutHours(cell: Cell): Cell {
@@ -57,14 +67,33 @@ function sinceStart(start: number, m: number): number {
 }
 
 /** Painel de edição de um dia: aplica na hora, com "Desfazer" para as mudanças feitas nesta sessão. */
-export function CellEditor({ employeeId, day, alerts, coveringRole, plannedBreakStart = null, onClose }: CellEditorProps) {
+export function CellEditor({ employeeId, day, alerts, coveringRole, plannedBreakStart = null, date, onClose }: CellEditorProps) {
   const config = useAppStore((s) => s.document.config);
   const employee = useAppStore((s) => s.document.employees.find((e) => e.id === employeeId));
-  const cell = useAppStore((s) => s.document.schedule?.[employeeId]?.[day]);
+  const cycleCell = useAppStore((s) => s.document.schedule?.[employeeId]?.[day]);
+  const calendar = useAppStore((s) => s.document.calendar);
+  const schedule = useAppStore((s) => s.document.schedule);
+  const onDate = useMemo(
+    () => (date ? cellOnDate(appStore.getState().document, employeeId, date) : null),
+    // O cálculo depende só da escala, do calendário e da data.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [date, employeeId, calendar, schedule, config],
+  );
+  const cell = onDate ? onDate.cell : cycleCell;
   const [history, setHistory] = useState<Snapshot[]>([]);
   const shiftSelectId = useId();
 
   if (!employee || !cell) return null;
+
+  /** Grava a célula: no ciclo, ou como ajuste só desta data (igual ao ciclo = sem ajuste). */
+  const setCell = (next: Cell) => {
+    const store = appStore.getState();
+    if (!date) {
+      store.setCell(employeeId, day, next);
+      return;
+    }
+    store.setDateOverride(date, employeeId, sameCell(next, onDate?.cycleCell) ? null : next);
+  };
 
   const snapshot = (): Snapshot => {
     const doc = appStore.getState().document;
@@ -72,6 +101,7 @@ export function CellEditor({ employeeId, day, alerts, coveringRole, plannedBreak
       cell: doc.schedule?.[employeeId]?.[day] ?? cell,
       customHours: doc.employees.find((e) => e.id === employeeId)?.customHours,
       marks: doc.marks,
+      dateOverrides: doc.calendar.dateOverrides,
     };
   };
 
@@ -84,8 +114,9 @@ export function CellEditor({ employeeId, day, alerts, coveringRole, plannedBreak
   const undo = () => {
     const last = history[history.length - 1];
     if (!last) return;
-    const { setCell, updateEmployee, setMarks } = appStore.getState();
-    setCell(employeeId, day, last.cell);
+    const { setCell, updateEmployee, setMarks, setDateOverrides } = appStore.getState();
+    if (date) setDateOverrides(last.dateOverrides);
+    else setCell(employeeId, day, last.cell);
     updateEmployee(employeeId, { customHours: last.customHours });
     setMarks(last.marks);
     setHistory((h) => h.slice(0, -1));
@@ -93,7 +124,7 @@ export function CellEditor({ employeeId, day, alerts, coveringRole, plannedBreak
 
   const setStatus = (status: 'work' | 'off') => {
     if (cell.status === status) return;
-    apply(() => appStore.getState().setCell(employeeId, day, { ...cell, status }));
+    apply(() => setCell({ ...cell, status }));
   };
 
   const shiftId = effectiveShiftId(config, employee, cell, day);
@@ -103,10 +134,16 @@ export function CellEditor({ employeeId, day, alerts, coveringRole, plannedBreak
   const single = isSingleShiftDay(config, weekdayOf(day)) ? findShift(config, shiftId) : undefined;
 
   const dayAlerts = alerts.filter((a) => a.day === day || (a.day === null && (a.week === weekOf(day) || a.week === null)));
+  const holiday = onDate?.source === 'holiday';
+  const dated = onDate?.source === 'override';
 
   return (
     <Sheet
-      kicker={`Semana ${weekOf(day) + 1} · ${WEEKDAY_NAMES[weekdayOf(day)]}`}
+      kicker={
+        date
+          ? `${WEEKDAY_NAMES[weekdayOf(day)]}, ${formatFullDate(date)} · Semana ${weekOf(day) + 1} do ciclo`
+          : `Semana ${weekOf(day) + 1} · ${WEEKDAY_NAMES[weekdayOf(day)]}`
+      }
       title={employee.name}
       onClose={onClose}
       footer={
@@ -120,12 +157,29 @@ export function CellEditor({ employeeId, day, alerts, coveringRole, plannedBreak
         </>
       }
     >
+      {date && !holiday && cell.status !== 'closed' && (
+        <div className="cell-date-note">
+          <p>
+            Só nesta data ({formatDayMonth(date)}); o ciclo não muda.
+            {dated && <strong className="cell-date-flag"> Ajustado nesta data.</strong>}
+          </p>
+          {dated && (
+            <button
+              type="button"
+              className="btn btn-sm"
+              onClick={() => apply(() => appStore.getState().setDateOverride(date, employeeId, null))}
+            >
+              Voltar ao ciclo
+            </button>
+          )}
+        </div>
+      )}
       {cell.status === 'closed' ? (
         <p className="sheet-readonly">
           <span className="sheet-readonly-icon" aria-hidden="true">
             ×
           </span>
-          Loja fechada
+          {holiday ? 'Loja fechada nesta data (feriado)' : 'Loja fechada'}
         </p>
       ) : (
         <>
@@ -170,11 +224,7 @@ export function CellEditor({ employeeId, day, alerts, coveringRole, plannedBreak
                     value={shiftId}
                     onChange={(e) => {
                       const next = e.target.value;
-                      apply(() =>
-                        appStore
-                          .getState()
-                          .setCell(employeeId, day, next === employee.shiftId ? { status: 'work' } : { status: 'work', shiftId: next }),
-                      );
+                      apply(() => setCell(next === employee.shiftId ? { status: 'work' } : { status: 'work', shiftId: next }));
                     }}
                   >
                     {config.shifts.map((s) => (
@@ -192,12 +242,13 @@ export function CellEditor({ employeeId, day, alerts, coveringRole, plannedBreak
                   initial={hours}
                   plannedBreakStart={plannedBreakStart}
                   canApplyAll={isRegisteredShift}
+                  dateOnly={!!date}
                   applyAllHint={
                     single
                       ? 'Neste dia vale o turno único (horário da loja); "Todos os dias" mudaria o horário do cadastro.'
                       : 'Neste dia a pessoa está em outro turno; o cadastro não muda.'
                   }
-                  onApplyDay={(h) => apply(() => appStore.getState().setCell(employeeId, day, { ...cell, hours: h }))}
+                  onApplyDay={(h) => apply(() => setCell({ ...cell, hours: h }))}
                   onApplyAll={(h) =>
                     apply(() => {
                       appStore.getState().updateEmployee(employeeId, { customHours: h });
@@ -208,11 +259,11 @@ export function CellEditor({ employeeId, day, alerts, coveringRole, plannedBreak
               )}
               {cell.hours && (
                 <p className="hint">
-                  Horário ajustado só neste dia.{' '}
+                  {date ? 'Horário ajustado só nesta data.' : 'Horário ajustado só neste dia.'}{' '}
                   <button
                     type="button"
                     className="link-btn"
-                    onClick={() => apply(() => appStore.getState().setCell(employeeId, day, withoutHours(cell)))}
+                    onClick={() => apply(() => setCell(withoutHours(cell)))}
                   >
                     {single ? 'Voltar ao horário do turno único' : 'Voltar ao horário do cadastro'}
                   </button>
@@ -252,13 +303,15 @@ interface HoursFormProps {
   initial: WorkHours;
   plannedBreakStart: number | null;
   canApplyAll: boolean;
+  /** Visão Mês: só "Só nesta data" (mudar o cadastro é na visão Ciclo). */
+  dateOnly?: boolean;
   /** Por que "Todos os dias" está desabilitado. */
   applyAllHint: string;
   onApplyDay(hours: WorkHours): void;
   onApplyAll(hours: WorkHours): void;
 }
 
-function HoursForm({ initial, plannedBreakStart, canApplyAll, applyAllHint, onApplyDay, onApplyAll }: HoursFormProps) {
+function HoursForm({ initial, plannedBreakStart, canApplyAll, dateOnly = false, applyAllHint, onApplyDay, onApplyAll }: HoursFormProps) {
   const initialLunch = initial.breakStart ?? plannedBreakStart;
   const [start, setStart] = useState(formatTime(initial.start));
   const [end, setEnd] = useState(formatTime(initial.end));
@@ -380,19 +433,25 @@ function HoursForm({ initial, plannedBreakStart, canApplyAll, applyAllHint, onAp
             a:
           </p>
           <div className="apply-scope-btns">
-            <button type="button" className="btn btn-sm" onClick={() => onApplyDay(draft)}>
-              Só este dia
+            <button type="button" className={dateOnly ? 'btn btn-sm btn-primary' : 'btn btn-sm'} onClick={() => onApplyDay(draft)}>
+              {dateOnly ? 'Só nesta data' : 'Só este dia'}
             </button>
-            <button
-              type="button"
-              className="btn btn-sm btn-primary"
-              disabled={!canApplyAll}
-              onClick={() => onApplyAll(draft)}
-            >
-              Todos os dias
-            </button>
+            {!dateOnly && (
+              <button
+                type="button"
+                className="btn btn-sm btn-primary"
+                disabled={!canApplyAll}
+                onClick={() => onApplyAll(draft)}
+              >
+                Todos os dias
+              </button>
+            )}
           </div>
-          {!canApplyAll && <p className="hint">{applyAllHint}</p>}
+          {dateOnly ? (
+            <p className="hint">Para mudar o horário de todos os dias, use a visão Ciclo.</p>
+          ) : (
+            !canApplyAll && <p className="hint">{applyAllHint}</p>
+          )}
         </div>
       )}
     </div>

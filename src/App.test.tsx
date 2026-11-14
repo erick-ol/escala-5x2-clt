@@ -71,8 +71,9 @@ describe('App', () => {
     await finishWizard(user);
 
     const dialog = screen.getByRole('dialog', { name: 'Gerar a escala de novo?' });
-    expect(dialog).toHaveTextContent('horários ajustados só num dia e marcações de cobertura');
+    expect(dialog).toHaveTextContent('horários ajustados só num dia, ajustes de datas do mês e marcações de cobertura');
     expect(dialog).toHaveTextContent('horários do cadastro');
+    expect(dialog).toHaveTextContent('o início do ciclo no calendário e os feriados');
     await user.click(within(dialog).getByRole('button', { name: 'Manter a escala atual' }));
 
     const after = doc().schedule!;

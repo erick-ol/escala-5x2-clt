@@ -1,11 +1,13 @@
 import { useEffect, useMemo } from 'react';
 import { computeCoverage, type CoverageResult } from '../domain/coverage';
+import { localToday, mondayOnOrBefore } from '../domain/dates';
 import { fitEmployee, generateSchedule } from '../domain/generator';
 import { findLunchGaps, planLunches, presenceForDay, type LunchGap, type LunchInput, type LunchPlan, type PresenceBlock } from '../domain/lunch';
 import { evaluateRules, type EmployeeReport, type LegalAlert } from '../domain/rules';
+import { projectMonth, weekAlertsAsCycle, type MonthProjection } from '../domain/month';
 import { suggestAll, type Suggestion } from '../domain/suggestions';
 import { weekOf } from '../domain/time';
-import type { AppDocument, DayIndex, LunchMark, Schedule } from '../domain/types';
+import { WEEKS, type AppDocument, type DayIndex, type LunchMark, type Schedule } from '../domain/types';
 import { appStore, useAppStore } from './store';
 
 export interface Derived {
@@ -116,16 +118,21 @@ export function useDerived(): Derived | null {
 }
 
 /**
- * Gera a escala do zero (regerar): apaga trocas de folga, ajustes de dia e marcações; mantém o cadastro (KTD13).
+ * Gera a escala do zero (regerar): apaga trocas de folga, ajustes de dia, ajustes de data do mês e marcações;
+ * mantém o cadastro (KTD13), o início do ciclo no calendário e os feriados.
+ * Na primeira geração, o ciclo passa a começar na segunda-feira desta semana.
  * Devolve a mensagem de erro se o gerador falhar.
  */
-export function runGenerate(): string | null {
-  const { document, setSchedule, setMarks, setLunchMarks } = appStore.getState();
+export function runGenerate(now: Date = new Date()): string | null {
+  const { document, setSchedule, setMarks, setLunchMarks, setDateOverrides, setCycleStart } = appStore.getState();
   try {
     const schedule = generateSchedule({ config: document.config, employees: document.employees });
+    const first = !document.schedule;
     setSchedule(schedule);
     setMarks([]);
     setLunchMarks([]);
+    setDateOverrides([]);
+    if (first) setCycleStart(mondayOnOrBefore(localToday(now)));
     return null;
   } catch (error) {
     console.error(error);
@@ -146,4 +153,45 @@ export function fitAddedEmployees(previousIds: ReadonlySet<string>): void {
     working[e.id] = fitEmployee({ config, employees, schedule: working }, e.id);
     appStore.getState().setRow(e.id, working[e.id]);
   }
+}
+
+/** Visão Mês: projeção do mês escolhido, recalculada a cada mudança do documento. */
+export function useMonthProjection(year: number, month: number): MonthProjection | null {
+  const doc = useAppStore((s) => s.document);
+  return useMemo(() => projectMonth(doc, year, month), [doc, year, month]);
+}
+
+/**
+ * Uma semana real do mês no formato `Derived` do ciclo (índices de dia do documento sintético da semana),
+ * para a grade, a visão do dia e o painel da célula reaproveitarem o que já existe.
+ * Os alertas são os das regras em linha reta (datas reais), não os do ciclo circular.
+ */
+export function monthWeekDerived(month: MonthProjection, index: number): Derived {
+  const week = month.weeks[index];
+  const reports: Record<string, EmployeeReport> = {};
+  for (const [id, r] of Object.entries(month.reports)) {
+    const weeklyMinutes = Array.from({ length: WEEKS }, () => 0);
+    weeklyMinutes[week.cycleWeek] = r.weeklyMinutes[index] ?? 0;
+    reports[id] = { employeeId: id, weeklyMinutes, alerts: weekAlertsAsCycle(week, r.alerts) };
+  }
+  const alerts = Object.values(reports).flatMap((r) => r.alerts);
+  const presenceCache = new Map<DayIndex, PresenceBlock[]>();
+  return {
+    coverage: week.coverage,
+    reports,
+    alerts,
+    suggestions: new Map(),
+    lunchPlan: week.lunchPlan,
+    lunchGaps: week.lunchGaps,
+    coveredLunchGaps: week.coveredLunchGaps,
+    orphanLunchMarks: [],
+    presence: (day) => {
+      let blocks = presenceCache.get(day);
+      if (!blocks) {
+        blocks = presenceForDay(week.lunchInput, week.lunchPlan, day);
+        presenceCache.set(day, blocks);
+      }
+      return blocks;
+    },
+  };
 }

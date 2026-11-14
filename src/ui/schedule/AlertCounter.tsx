@@ -35,12 +35,14 @@ export interface AlertListProps {
   title: string;
   alerts: LegalAlert[];
   employees: Employee[];
+  /** Onde o alerta acontece (padrão: dia e semana do ciclo). */
+  where?(alert: LegalAlert): string;
   onSelect(alert: LegalAlert): void;
   onClose(): void;
 }
 
 /** Lista de alertas: pessoa, regra e dia. Tocar leva à célula. */
-export function AlertList({ title, alerts, employees, onSelect, onClose }: AlertListProps) {
+export function AlertList({ title, alerts, employees, where = alertWhere, onSelect, onClose }: AlertListProps) {
   return (
     <Sheet
       tone="alert"
@@ -67,7 +69,7 @@ export function AlertList({ title, alerts, employees, onSelect, onClose }: Alert
                 </span>
                 <span className="alert-item-body">
                   <span className="alert-item-who">
-                    {employeeName(employees, a.employeeId)} · <span className="alert-item-where">{alertWhere(a)}</span>
+                    {employeeName(employees, a.employeeId)} · <span className="alert-item-where">{where(a)}</span>
                   </span>
                   <span className="alert-item-msg">{a.message}</span>
                 </span>

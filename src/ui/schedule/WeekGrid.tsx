@@ -10,7 +10,8 @@ import {
   registeredHours,
   weekdayOf,
 } from '../../domain/time';
-import { DAYS_PER_WEEK, WEEKDAY_NAMES, WEEKDAY_SHORT, type AppDocument, type CoverageMark, type Employee } from '../../domain/types';
+import { formatDayMonth } from '../../domain/dates';
+import { DAYS_PER_WEEK, WEEKDAY_NAMES, WEEKDAY_SHORT, type AppDocument, type CoverageMark, type Employee, type ISODate } from '../../domain/types';
 import { alertsInWeek, type Derived } from '../../state/useDerived';
 import { flexFor, flexTag } from '../flex';
 import { dayLabel, employeeName, plural, roleName, shiftInitial, shiftName, shiftTone, shortName } from './labels';
@@ -20,8 +21,24 @@ export interface Highlight {
   day: number | null;
 }
 
+/** Visão Mês: a semana mostra datas reais (cabeçalhos, rótulos, feriados e ajustes da data). */
+export interface WeekDates {
+  /** As 7 datas, de segunda a domingo. */
+  dates: ISODate[];
+  /** Data dentro do mês escolhido (fora dele, a coluna fica apagada). */
+  inMonth: boolean[];
+  /** Loja fechada só nesta data (feriado). */
+  holidays: boolean[];
+  /** Células ajustadas só na data: `${employeeId}|${i}`. */
+  overridden: ReadonlySet<string>;
+  /** "30/11 a 06/12" */
+  range: string;
+}
+
 export interface WeekGridProps {
   week: number;
+  /** Visão Mês: datas reais desta semana. Sem isso, a grade mostra os dias do ciclo. */
+  dates?: WeekDates;
   doc: AppDocument;
   derived: Derived;
   highlight: Highlight | null;
@@ -94,6 +111,7 @@ const HEAD_ROW = -1;
 
 export function WeekGrid({
   week,
+  dates,
   doc,
   derived,
   highlight,
@@ -108,6 +126,10 @@ export function WeekGrid({
   const [active, setActive] = useState<{ r: number; c: number }>({ r: -1, c: -1 });
   const rows = buildRows(doc, derived, week);
   const first = week * DAYS_PER_WEEK;
+  /** Rótulo do dia nos nomes acessíveis: "quarta, semana 1" ou, no mês, "quarta 02/12". */
+  const labelOf = (day: number) =>
+    dates ? `${WEEKDAY_NAMES[weekdayOf(day)].toLowerCase()} ${formatDayMonth(dates.dates[day - first])}` : dayLabel(day);
+  const outClass = (c: number) => (dates && !dates.inMonth[c] ? ' is-out' : '');
 
   // Primeira célula navegável recebe o tabindex=0 quando ainda não há célula ativa.
   const navRows = rows.map((row) => row.kind !== 'group');
@@ -173,7 +195,7 @@ export function WeekGrid({
       ref={gridRef}
       className="wg"
       role="grid"
-      aria-label={`Escala da semana ${week + 1}`}
+      aria-label={dates ? `Escala de ${dates.range}` : `Escala da semana ${week + 1}`}
       aria-rowcount={rows.length + 1}
       onKeyDown={onKeyDown}
     >
@@ -186,16 +208,21 @@ export function WeekGrid({
           const wd = weekdayOf(day);
           const open = config.days[wd]?.open;
           const single = isSingleShiftDay(config, wd);
+          const holiday = !!dates?.holidays[c];
+          const date = dates?.dates[c];
+          const label = date
+            ? `${WEEKDAY_NAMES[wd]}, ${formatDayMonth(date)}${holiday ? ', fechado (feriado)' : single ? ', turno único' : ''}${dates?.inMonth[c] ? '' : ', fora do mês'}: opções da data`
+            : `${WEEKDAY_NAMES[wd]}, dia ${day + 1} do ciclo${single ? ', turno único' : ''}: ver o dia`;
           return (
             <div
               role="columnheader"
               key={day}
-              className={`wg-dayhead${open ? '' : ' is-closed'}${wd === 6 ? ' is-sunday' : ''}`}
+              className={`wg-dayhead${open ? '' : ' is-closed'}${holiday ? ' is-holiday' : ''}${wd === 6 ? ' is-sunday' : ''}${outClass(c)}`}
             >
               <button
                 type="button"
                 className="wg-daybtn"
-                aria-label={`${WEEKDAY_NAMES[wd]}, dia ${day + 1} do ciclo${single ? ', turno único' : ''}: ver o dia`}
+                aria-label={label}
                 data-r={HEAD_ROW}
                 data-c={c}
                 tabIndex={tabIndexFor(HEAD_ROW, c)}
@@ -203,9 +230,9 @@ export function WeekGrid({
                 onClick={() => onOpenDay(day)}
               >
                 <span className="wg-dayhead-name">{WEEKDAY_SHORT[wd]}</span>
-                <span className="wg-dayhead-num mono">{day + 1}</span>
+                <span className="wg-dayhead-num mono">{date ? formatDayMonth(date) : day + 1}</span>
                 <span className="wg-dayhead-more" aria-hidden="true">
-                  {single ? 'único' : 'ver'}
+                  {holiday ? 'feriado' : single ? 'único' : date ? 'data' : 'ver'}
                 </span>
               </button>
             </div>
@@ -234,16 +261,16 @@ export function WeekGrid({
                 <span className="wg-gapname-role">{shiftName(config, row.shiftId)}</span>
               </div>
               {row.cells.map((entry, c) => {
-                if (!entry) return <div role="gridcell" key={c} className="wg-cell wg-cell-empty" />;
+                if (!entry) return <div role="gridcell" key={c} className={`wg-cell wg-cell-empty${outClass(c)}`} />;
                 const { gap, mark } = entry;
                 const who = mark
                   ? mark.coveredBy.kind === 'owner'
                     ? 'Dono/família'
                     : employeeName(employees, mark.coveredBy.employeeId)
                   : null;
-                const label = `${role}, ${shift}, ${dayLabel(gap.day)}: ${who ? `coberto por ${who}` : 'falta 1 pessoa'}`;
+                const label = `${role}, ${shift}, ${labelOf(gap.day)}: ${who ? `coberto por ${who}` : 'falta 1 pessoa'}`;
                 return (
-                  <div role="gridcell" key={c} className="wg-cell">
+                  <div role="gridcell" key={c} className={`wg-cell${outClass(c)}`}>
                     <button
                       type="button"
                       className={`wg-btn ${mark ? 'wg-covered' : 'wg-gap'}`}
@@ -303,10 +330,15 @@ export function WeekGrid({
               const covering = coverMarks.filter((g) => g.day === day);
               const flex = cell?.status === 'work' ? flexFor(derived.coverage, employee.id, day) : undefined;
               const isHighlighted = highlight?.employeeId === employee.id && highlight.day === day;
-              let label = `${employee.name}, ${dayLabel(day)}: `;
+              const dated = !!dates?.overridden.has(`${employee.id}|${c}`);
+              let label = `${employee.name}, ${labelOf(day)}: `;
               let body;
               let cls = 'wg-btn';
-              if (!cell || cell.status === 'closed') {
+              if (dates?.holidays[c]) {
+                label += 'fechado (feriado)';
+                cls += ' wg-closed wg-holiday';
+                body = <span className="wg-closed-text">Feriado</span>;
+              } else if (!cell || cell.status === 'closed') {
                 label += 'loja fechada';
                 cls += ' wg-closed';
                 body = <span className="wg-closed-text">Fech.</span>;
@@ -349,6 +381,10 @@ export function WeekGrid({
                   </>
                 );
               }
+              if (dated) {
+                label += ', ajustado nesta data';
+                cls += ' is-dated';
+              }
               if (covering.length > 0) {
                 const what = covering.map((g) => `${roleName(config, g.roleId)} ${shiftName(config, g.shiftId).toLowerCase()}`);
                 label += `, cobre ${what.join(' e ')}`;
@@ -360,7 +396,7 @@ export function WeekGrid({
               }
               if (isHighlighted) cls += ' is-highlighted';
               return (
-                <div role="gridcell" key={c} className="wg-cell">
+                <div role="gridcell" key={c} className={`wg-cell${outClass(c)}`}>
                   <button
                     type="button"
                     className={cls}
@@ -372,6 +408,7 @@ export function WeekGrid({
                     onClick={() => onOpenCell(employee.id, day)}
                   >
                     {body}
+                    {dated && <span className="wg-dated" aria-hidden="true" />}
                     {covering.length > 0 && (
                       <span className="wg-plus" aria-hidden="true">
                         +
@@ -400,7 +437,7 @@ export function WeekGrid({
                 <button
                   type="button"
                   className="wg-alert-btn"
-                  aria-label={`${plural(weekAlerts.length, 'alerta', 'alertas')} de ${employee.name} na semana ${week + 1}`}
+                  aria-label={`${plural(weekAlerts.length, 'alerta', 'alertas')} de ${employee.name} ${dates ? `de ${dates.range}` : `na semana ${week + 1}`}`}
                   onClick={() => onOpenAlerts(employee.id, week)}
                 >
                   <span className="wg-alert-btn-icon" aria-hidden="true">

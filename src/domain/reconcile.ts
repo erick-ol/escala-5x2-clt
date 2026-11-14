@@ -1,6 +1,53 @@
+import { isISODate, localToday, mondayOnOrBefore, weekdayOfDate } from './dates';
 import { fitEmployee } from './generator';
 import { findShift, isSingleShiftDay, weekdayOf } from './time';
-import type { AppDocument, Cell, Employee, Schedule } from './types';
+import type { AppDocument, CalendarSettings, Cell, DateOverride, Employee, Schedule } from './types';
+
+/**
+ * Projeção no calendário coerente com a configuração e a equipe:
+ * - início do ciclo inválido vira a segunda-feira desta semana; fora de segunda, volta para a segunda anterior;
+ * - feriados inválidos ou repetidos saem (ficam em ordem);
+ * - ajustes de data de quem saiu da equipe, de data inválida, repetidos (vale o último) ou num dia da semana
+ *   em que a loja não abre saem; ajuste "loja fechada" num dia aberto sai; turno removido ou em dia de
+ *   turno único é tirado do ajuste (mesma regra das células do ciclo).
+ */
+function reconcileCalendar(doc: AppDocument, employeeIds: ReadonlySet<string>, shiftIds: ReadonlySet<string>): CalendarSettings {
+  const { config } = doc;
+  const current = doc.calendar as CalendarSettings | undefined;
+  const fallback = mondayOnOrBefore(localToday());
+  if (!current) return { cycleStart: fallback, closedDates: [], dateOverrides: [] };
+
+  let changed = false;
+  let cycleStart = current.cycleStart;
+  if (!isISODate(cycleStart)) cycleStart = fallback;
+  else if (weekdayOfDate(cycleStart) !== 0) cycleStart = mondayOnOrBefore(cycleStart);
+  if (cycleStart !== current.cycleStart) changed = true;
+
+  const closedDates = [...new Set(current.closedDates.filter(isISODate))].sort();
+  if (closedDates.length !== current.closedDates.length || closedDates.some((d, i) => d !== current.closedDates[i])) changed = true;
+
+  const byKey = new Map<string, DateOverride>();
+  for (const o of current.dateOverrides) {
+    if (!isISODate(o.date) || !employeeIds.has(o.employeeId)) continue;
+    const wd = weekdayOfDate(o.date);
+    if (!config.days[wd]?.open || o.cell.status === 'closed') continue;
+    let cell: Cell = o.cell;
+    if (cell.shiftId && (isSingleShiftDay(config, wd) || !shiftIds.has(cell.shiftId))) {
+      const removed = !isSingleShiftDay(config, wd);
+      const { shiftId: _drop, hours, ...rest } = cell;
+      void _drop;
+      cell = removed || !hours ? rest : { ...rest, hours };
+    }
+    const key = `${o.date}|${o.employeeId}`;
+    byKey.delete(key);
+    byKey.set(key, cell === o.cell ? o : { ...o, cell });
+  }
+  const dateOverrides = [...byKey.values()];
+  if (dateOverrides.length !== current.dateOverrides.length || dateOverrides.some((o, i) => o !== current.dateOverrides[i])) {
+    changed = true;
+  }
+  return changed ? { cycleStart, closedDates, dateOverrides } : current;
+}
 
 /**
  * Deixa a escala coerente com a configuração atual. Roda ao carregar, ao restaurar um backup
@@ -13,6 +60,7 @@ import type { AppDocument, Cell, Employee, Schedule } from './types';
  * - Nos dias de turno único, ajustes de turno são descartados (todos ficam no turno único; o ajuste de horário fica).
  * - Marcações de quem saiu da equipe, ou de turno/função removidos, são descartadas.
  * - Segunda área que aponta para função removida, ou igual à função principal, é descartada.
+ * - Projeção no calendário (visão Mês): ver `reconcileCalendar`.
  */
 export function reconcileDocument(doc: AppDocument): AppDocument {
   const { config } = doc;
@@ -37,6 +85,9 @@ export function reconcileDocument(doc: AppDocument): AppDocument {
       roleIds.has(m.roleId) &&
       (m.coveredBy.kind === 'owner' || employeeIds.has(m.coveredBy.employeeId)),
   );
+
+  const calendar = reconcileCalendar(doc, employeeIds, shiftIds);
+  if (calendar !== doc.calendar) doc = { ...doc, calendar };
 
   const lunchMarks = (doc.lunchMarks ?? []).filter((m) => roleIds.has(m.roleId));
   if (lunchMarks.length !== (doc.lunchMarks ?? []).length || !doc.lunchMarks) doc = { ...doc, lunchMarks };

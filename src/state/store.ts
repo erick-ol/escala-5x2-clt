@@ -6,6 +6,8 @@ import {
   type AppDocument,
   type Cell,
   type CoverageMark,
+  type DateOverride,
+  type ISODate,
   type LunchMark,
   type Employee,
   type Schedule,
@@ -13,6 +15,7 @@ import {
 } from '../domain/types';
 import { reconcileDocument } from '../domain/reconcile';
 import { weekdayOf } from '../domain/time';
+import { isISODate, mondayOnOrBefore } from '../domain/dates';
 import { parseDocument } from './schema';
 
 export const STORAGE_KEY = 'escala-5x2-clt:v1';
@@ -61,6 +64,13 @@ export interface AppState {
   setCell(employeeId: string, day: number, cell: Cell): void;
   setMarks(marks: CoverageMark[]): void;
   setLunchMarks(lunchMarks: LunchMark[]): void;
+  /** Visão Mês: segunda-feira em que o ciclo começa (outra data é levada à segunda anterior). */
+  setCycleStart(date: ISODate): void;
+  /** Visão Mês: loja fechada (feriado) só nesta data. */
+  setClosedDate(date: ISODate, closed: boolean): void;
+  /** Visão Mês: ajuste de uma pessoa só nesta data; null volta ao ciclo. */
+  setDateOverride(date: ISODate, employeeId: string, cell: Cell | null): void;
+  setDateOverrides(overrides: DateOverride[]): void;
   markBackupDone(when?: Date): void;
 }
 
@@ -161,6 +171,7 @@ export function createAppStore(storage: KeyValueStorage | null, now: () => Date 
           employees: d.employees.filter((e) => e.id !== id),
           schedule,
           marks: d.marks.filter((m) => !markInvolves(m, id)),
+          calendar: { ...d.calendar, dateOverrides: d.calendar.dateOverrides.filter((o) => o.employeeId !== id) },
         });
       },
 
@@ -189,6 +200,34 @@ export function createAppStore(storage: KeyValueStorage | null, now: () => Date 
 
       setMarks: (marks) => setDocument({ ...doc(), marks }),
       setLunchMarks: (lunchMarks) => setDocument({ ...doc(), lunchMarks }),
+
+      setCycleStart: (date) => {
+        if (!isISODate(date)) return;
+        const d = doc();
+        const cycleStart = mondayOnOrBefore(date);
+        if (cycleStart === d.calendar.cycleStart) return;
+        setDocument({ ...d, calendar: { ...d.calendar, cycleStart } });
+      },
+
+      setClosedDate: (date, closed) => {
+        if (!isISODate(date)) return;
+        const d = doc();
+        const others = d.calendar.closedDates.filter((x) => x !== date);
+        const closedDates = closed ? [...others, date].sort() : others;
+        setDocument({ ...d, calendar: { ...d.calendar, closedDates } });
+      },
+
+      setDateOverride: (date, employeeId, cell) => {
+        const d = doc();
+        const others = d.calendar.dateOverrides.filter((o) => !(o.date === date && o.employeeId === employeeId));
+        const dateOverrides = cell ? [...others, { date, employeeId, cell }] : others;
+        setDocument({ ...d, calendar: { ...d.calendar, dateOverrides } });
+      },
+
+      setDateOverrides: (dateOverrides) => {
+        const d = doc();
+        setDocument({ ...d, calendar: { ...d.calendar, dateOverrides } });
+      },
 
       markBackupDone: (when) => set({ lastBackupAt: (when ?? now()).toISOString() }),
     };

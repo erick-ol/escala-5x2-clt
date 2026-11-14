@@ -4,7 +4,7 @@ import { fitAddedEmployees, runGenerate } from './state/useDerived';
 import { ConfirmDialog } from './ui/ConfirmDialog';
 import { ExportPanel } from './ui/export/ExportPanel';
 import { LegalNotice } from './ui/LegalNotice';
-import { ScheduleView } from './ui/schedule/ScheduleView';
+import { ScheduleView, type MonthRef } from './ui/schedule/ScheduleView';
 import { FirstVisit } from './ui/setup/FirstVisit';
 import { SetupWizard } from './ui/setup/SetupWizard';
 import { StorageWarning } from './ui/StorageWarning';
@@ -21,6 +21,8 @@ function initialView(): View {
 export function App() {
   const [view, setView] = useState<View>(initialView);
   const [exportOpen, setExportOpen] = useState(false);
+  /** Mês mostrado na visão Mês quando "Exportar" foi tocado (a exportação oferece a folha do mês). */
+  const [exportMonth, setExportMonth] = useState<MonthRef | null>(null);
   const [confirmRegen, setConfirmRegen] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
   /** Quem já tinha linha na escala quando a configuração foi aberta (para encaixar quem entrar depois). */
@@ -87,7 +89,14 @@ export function App() {
             </div>
           </header>
           <main className="container app-main">
-            <ScheduleView key={scheduleKey} initialError={genError} onExport={() => setExportOpen(true)} />
+            <ScheduleView
+              key={scheduleKey}
+              initialError={genError}
+              onExport={(month) => {
+                setExportMonth(month ?? null);
+                setExportOpen(true);
+              }}
+            />
           </main>
         </>
       )}
@@ -96,7 +105,7 @@ export function App() {
         <LegalNotice />
       </div>
 
-      {exportOpen && <ExportPanel onClose={() => setExportOpen(false)} />}
+      {exportOpen && <ExportPanel month={exportMonth ?? undefined} onClose={() => setExportOpen(false)} />}
 
       <ConfirmDialog
         open={confirmRegen}
@@ -117,8 +126,8 @@ export function App() {
         }}
       >
         <p>
-          Some: trocas de folga, horários ajustados só num dia e marcações de cobertura. Fica: os horários do cadastro
-          de cada pessoa.
+          Some: trocas de folga, horários ajustados só num dia, ajustes de datas do mês e marcações de cobertura. Fica:
+          os horários do cadastro de cada pessoa, o início do ciclo no calendário e os feriados.
         </p>
         <p>Se mantiver a escala atual, quem entrou na equipe agora é encaixado sem mexer nos demais.</p>
       </ConfirmDialog>

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { localToday, mondayOnOrBefore } from '../domain/dates';
 import { CYCLE_DAYS, SCHEMA_VERSION, type AppDocument } from '../domain/types';
 
 const minutes = z.number().int().min(0).max(1439);
@@ -64,6 +65,18 @@ const mark = z.object({
   coveredBy: coverer,
 });
 
+/**
+ * Projeção no calendário (visão Mês). Ausente em documentos e backups antigos: o ciclo passa a começar
+ * na segunda-feira desta semana. Datas inválidas não derrubam a leitura: reconcile.ts as descarta.
+ */
+const calendar = z
+  .object({
+    cycleStart: z.string().default(() => mondayOnOrBefore(localToday())),
+    closedDates: z.array(z.string()).default([]),
+    dateOverrides: z.array(z.object({ date: z.string(), employeeId: z.string(), cell })).default([]),
+  })
+  .default({});
+
 export const documentSchema = z.object({
   schemaVersion: z.literal(SCHEMA_VERSION),
   config,
@@ -80,6 +93,7 @@ export const documentSchema = z.object({
       }),
     )
     .default([]),
+  calendar,
 });
 
 export type ParseResult = { ok: true; document: AppDocument } | { ok: false; error: string };

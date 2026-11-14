@@ -128,3 +128,11 @@
 .wi .xp-gap-missing { border-style: dashed; border-width: 3px; }
 .wi-legend { list-style: none; margin: 24px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 10px 28px; font-size: 22px; }
 .wi-legend .mono { font-family: var(--font-mono); font-size: 19px; }
+.wi .wi-out { color: #777; font-style: italic; }
+.wi-table thead th.wi-out { background: #666; }
+.wi .xp-cell-holiday { font-size: 24px; font-weight: 800; background: repeating-linear-gradient(-45deg, #e4e4e4 0 8px, #fff 8px 13px); }
+.export-scope { margin: 0; }
+.export-scope .seg-btn { font-size: 14px; }
+/* Semanas do mês ("26/10 – 01/11") cabem numa linha em 375px. */
+.week-btn { padding: 0 6px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+@media (max-width: 400px) { .week-btn { font-size: 13px; letter-spacing: -0.01em; } }

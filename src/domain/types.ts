@@ -135,6 +135,27 @@ export interface LunchMark {
   to: Minutes;
 }
 
+/** Data do calendário no formato ISO local "aaaa-mm-dd" (sem fuso horário). */
+export type ISODate = string;
+
+/** Ajuste de uma pessoa numa data específica do mês: o ciclo não muda. */
+export interface DateOverride {
+  date: ISODate;
+  employeeId: string;
+  cell: Cell;
+}
+
+/**
+ * Projeção do ciclo no calendário (visão Mês): o ciclo de 21 dias se repete a partir de `cycleStart`
+ * (sempre uma segunda-feira). Feriados fecham a loja só naquela data e os ajustes valem só na data.
+ */
+export interface CalendarSettings {
+  cycleStart: ISODate;
+  /** Datas em que a loja fecha (feriado): todos ficam "loja fechada" e não há mínimo. */
+  closedDates: ISODate[];
+  dateOverrides: DateOverride[];
+}
+
 export const SCHEMA_VERSION = 1 as const;
 
 export interface AppDocument {
@@ -144,4 +165,5 @@ export interface AppDocument {
   schedule: Schedule | null;
   marks: CoverageMark[];
   lunchMarks: LunchMark[];
+  calendar: CalendarSettings;
 }

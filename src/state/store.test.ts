@@ -142,4 +142,34 @@ describe('store', () => {
     expect(s.getState().document.employees).toHaveLength(0);
     expect(storage.data.has(STORAGE_KEY)).toBe(false);
   });
+
+  test('calendário: início do ciclo vai para a segunda, feriado liga e desliga, ajuste de quem sai é removido', () => {
+    const s = createAppStore(memoryStorage(), now);
+    s.getState().loadExample();
+    expect(s.getState().document.calendar.cycleStart).toBe('2026-11-09');
+    s.getState().setCycleStart('2026-12-03');
+    expect(s.getState().document.calendar.cycleStart).toBe('2026-11-30');
+    s.getState().setCycleStart('não é data');
+    expect(s.getState().document.calendar.cycleStart).toBe('2026-11-30');
+
+    s.getState().setClosedDate('2026-12-25', true);
+    s.getState().setClosedDate('2026-12-08', true);
+    expect(s.getState().document.calendar.closedDates).toEqual(['2026-12-08', '2026-12-25']);
+    s.getState().setClosedDate('2026-12-08', false);
+    expect(s.getState().document.calendar.closedDates).toEqual(['2026-12-25']);
+
+    s.getState().setDateOverride('2026-12-02', 'rosa', { status: 'off' });
+    s.getState().setDateOverride('2026-12-02', 'rosa', { status: 'work' });
+    s.getState().setDateOverride('2026-12-02', 'pedro', { status: 'off' });
+    expect(s.getState().document.calendar.dateOverrides).toEqual([
+      { date: '2026-12-02', employeeId: 'rosa', cell: { status: 'work' } },
+      { date: '2026-12-02', employeeId: 'pedro', cell: { status: 'off' } },
+    ]);
+    s.getState().removeEmployee('rosa');
+    expect(s.getState().document.calendar.dateOverrides).toEqual([
+      { date: '2026-12-02', employeeId: 'pedro', cell: { status: 'off' } },
+    ]);
+    s.getState().setDateOverride('2026-12-02', 'pedro', null);
+    expect(s.getState().document.calendar.dateOverrides).toEqual([]);
+  });
 });

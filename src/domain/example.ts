@@ -1,3 +1,4 @@
+import { localToday, mondayOnOrBefore } from './dates';
 import { defaultRegime } from './legal';
 import type { AppDocument, StoreDay } from './types';
 import { SCHEMA_VERSION } from './types';
@@ -60,6 +61,7 @@ export function exampleDocument(today: Date = new Date()): AppDocument {
     schedule: null,
     marks: [],
     lunchMarks: [],
+    calendar: { cycleStart: mondayOnOrBefore(localToday(today)), closedDates: [], dateOverrides: [] },
   };
 }
 
@@ -79,5 +81,6 @@ export function emptyDocument(today: Date = new Date()): AppDocument {
     schedule: null,
     marks: [],
     lunchMarks: [],
+    calendar: { cycleStart: mondayOnOrBefore(localToday(today)), closedDates: [], dateOverrides: [] },
   };
 }
