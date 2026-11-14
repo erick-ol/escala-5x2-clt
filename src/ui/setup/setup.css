@@ -80,15 +80,17 @@
 .setup-progress > span { display: block; height: 100%; background: var(--brand); transition: width 0.2s ease; }
 
 .setup-banner {
-  margin: 12px 0 0;
-  padding: 10px 12px;
-  border-left: 4px solid var(--gap);
-  background: var(--gap-soft);
-  color: #6b3204;
+  margin: var(--s-4) 0 0;
+  padding: var(--s-3) var(--s-4);
+  display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-2);
+  background: var(--paper-2);
+  color: var(--ink-2);
   border-radius: var(--radius-sm);
-  font-weight: 600;
   font-size: 14px;
 }
+.setup-banner p { margin: 0; line-height: 1.45; }
+.setup-regen { font-size: 14px; color: var(--alert); }
+.setup-back { margin-bottom: var(--s-3); }
 
 .setup-body { outline: none; }
 .setup-step { display: flex; flex-direction: column; gap: var(--s-4); padding-top: var(--s-5); }

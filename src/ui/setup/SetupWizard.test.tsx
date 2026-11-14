@@ -317,17 +317,45 @@ describe('SetupWizard', () => {
     expect(screen.queryByLabelText('Segunda área (opcional)')).not.toBeInTheDocument();
   });
 
-  test('aviso aparece quando a escala já foi gerada', () => {
-    const { unmount } = render(<SetupWizard onFinish={() => {}} />);
-    expect(screen.queryByText(/A escala já foi gerada/)).not.toBeInTheDocument();
-    unmount();
+  test('primeira configuração não tem "Voltar à escala" e termina em "Gerar escala"', () => {
+    render(<SetupWizard onFinish={() => {}} initialStep={3} />);
+    expect(screen.queryByRole('button', { name: /Voltar à escala/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/As mudanças são salvas na hora/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Gerar escala' })).toBeInTheDocument();
+  });
 
+  test('modo de edição: "Voltar à escala" em qualquer etapa, "Salvar e voltar" no fim e "Gerar escala nova" à parte', async () => {
+    const user = userEvent.setup();
     appStore.getState().loadExample();
     appStore.getState().setSchedule({});
-    render(<SetupWizard onFinish={() => {}} initialStep={1} />);
-    expect(
-      screen.getByText('A escala já foi gerada. Ao terminar, você poderá gerar de novo com as mudanças.'),
-    ).toBeInTheDocument();
+    const onBack = vi.fn();
+    const onRegen = vi.fn();
+    const onFinish = vi.fn();
+    render(<SetupWizard onFinish={onFinish} onBackToSchedule={onBack} onRegenerate={onRegen} initialStep={1} />);
+    expect(screen.getByText(/As mudanças são salvas na hora/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /Voltar à escala/ }));
+    expect(onBack).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole('button', { name: /Equipe/ }));
+    await user.click(screen.getByRole('button', { name: 'Salvar e voltar' }));
+    expect(onBack).toHaveBeenCalledTimes(2);
+
+    await user.click(screen.getByRole('button', { name: 'Gerar escala nova do zero' }));
+    expect(onRegen).toHaveBeenCalledTimes(1);
+    expect(onFinish).not.toHaveBeenCalled();
+  });
+
+  test('modo de edição: "Voltar à escala" com configuração inválida mostra o motivo e não sai', async () => {
+    const user = userEvent.setup();
+    appStore.getState().loadExample();
+    appStore.getState().setSchedule({});
+    for (const e of appStore.getState().document.employees) appStore.getState().removeEmployee(e.id);
+    const onBack = vi.fn();
+    render(<SetupWizard onFinish={() => {}} onBackToSchedule={onBack} onRegenerate={() => {}} />);
+    await user.click(screen.getByRole('button', { name: /Voltar à escala/ }));
+    expect(onBack).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toHaveTextContent('Cadastre pelo menos uma pessoa na equipe.');
   });
 
   test('"Começar do zero" pede confirmação; cancelar mantém e confirmar limpa tudo', async () => {

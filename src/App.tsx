@@ -47,12 +47,18 @@ export function App() {
   };
 
   const onWizardFinish = () => {
-    if (appStore.getState().document.schedule) {
-      setConfirmRegen(true);
-      return;
-    }
     showSchedule(runGenerate());
   };
+
+  /** Volta da configuração para a escala existente, ajustando-a à configuração nova sem regerar. */
+  const backToSchedule = () => {
+    // Dias abertos/fechados, turnos removidos etc.; depois encaixa quem entrou na equipe.
+    appStore.getState().replaceDocument(appStore.getState().document);
+    fitAddedEmployees(idsBefore);
+    showSchedule(null);
+  };
+
+  const hasSchedule = useAppStore((s) => s.document.schedule !== null);
 
   return (
     <div className="app">
@@ -66,7 +72,11 @@ export function App() {
 
       {view === 'wizard' && (
         <main className="container app-main">
-          <SetupWizard onFinish={onWizardFinish} />
+          <SetupWizard
+            onFinish={onWizardFinish}
+            onBackToSchedule={hasSchedule ? backToSchedule : undefined}
+            onRegenerate={hasSchedule ? () => setConfirmRegen(true) : undefined}
+          />
         </main>
       )}
 
@@ -109,17 +119,11 @@ export function App() {
 
       <ConfirmDialog
         open={confirmRegen}
-        title="Gerar a escala de novo?"
-        confirmLabel="Regerar e perder ajustes"
-        cancelLabel="Manter a escala atual"
+        title="Gerar uma escala nova do zero?"
+        confirmLabel="Gerar escala nova"
+        cancelLabel="Cancelar"
         danger
-        onCancel={() => {
-          setConfirmRegen(false);
-          // Ajusta a escala à configuração nova (dias abertos/fechados, turnos removidos) antes de encaixar quem chegou.
-          appStore.getState().replaceDocument(appStore.getState().document);
-          fitAddedEmployees(idsBefore);
-          showSchedule(null);
-        }}
+        onCancel={() => setConfirmRegen(false)}
         onConfirm={() => {
           setConfirmRegen(false);
           showSchedule(runGenerate());
@@ -129,7 +133,6 @@ export function App() {
           Some: trocas de folga, horários ajustados só num dia, ajustes de datas do mês e marcações de cobertura. Fica:
           os horários do cadastro de cada pessoa, o início do ciclo no calendário e os feriados.
         </p>
-        <p>Se mantiver a escala atual, quem entrou na equipe agora é encaixado sem mexer nos demais.</p>
       </ConfirmDialog>
     </div>
   );

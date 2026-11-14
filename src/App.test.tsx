@@ -57,7 +57,7 @@ describe('App', () => {
     expect(screen.getByText('Exportar escala')).toBeInTheDocument();
   });
 
-  test('reconfigurar com escala existente pergunta antes de regerar; manter encaixa quem entrou', async () => {
+  test('reconfigurar com escala existente: "Voltar à escala" mantém a escala e encaixa quem entrou', async () => {
     seedWithSchedule();
     const user = userEvent.setup();
     render(<App />);
@@ -68,13 +68,8 @@ describe('App', () => {
 
     await user.click(screen.getByRole('button', { name: 'Configurar' }));
     appStore.getState().addEmployee({ id: 'bia', name: 'Bia', roleId: 'balconista', shiftId: 'tarde', isWoman: true });
-    await finishWizard(user);
-
-    const dialog = screen.getByRole('dialog', { name: 'Gerar a escala de novo?' });
-    expect(dialog).toHaveTextContent('horários ajustados só num dia, ajustes de datas do mês e marcações de cobertura');
-    expect(dialog).toHaveTextContent('horários do cadastro');
-    expect(dialog).toHaveTextContent('o início do ciclo no calendário e os feriados');
-    await user.click(within(dialog).getByRole('button', { name: 'Manter a escala atual' }));
+    await user.click(screen.getByRole('button', { name: /Voltar à escala/ }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 
     const after = doc().schedule!;
     expect(after.rosa).toEqual(before.rosa);
@@ -92,8 +87,12 @@ describe('App', () => {
     const user = userEvent.setup();
     render(<App />);
     await user.click(screen.getByRole('button', { name: 'Configurar' }));
-    await finishWizard(user);
-    await user.click(screen.getByRole('button', { name: 'Regerar e perder ajustes' }));
+    await user.click(screen.getByRole('button', { name: 'Gerar escala nova do zero' }));
+    const dialog = screen.getByRole('dialog', { name: 'Gerar uma escala nova do zero?' });
+    expect(dialog).toHaveTextContent('horários ajustados só num dia, ajustes de datas do mês e marcações de cobertura');
+    expect(dialog).toHaveTextContent('horários do cadastro');
+    expect(dialog).toHaveTextContent('o início do ciclo no calendário e os feriados');
+    await user.click(within(dialog).getByRole('button', { name: 'Gerar escala nova' }));
     expect(doc().schedule!.rosa[3].status).toBe('work');
     expect(screen.getByRole('grid', { name: 'Escala da semana 1' })).toBeInTheDocument();
   });

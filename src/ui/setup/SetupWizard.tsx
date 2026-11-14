@@ -9,8 +9,16 @@ import { TeamStep } from './TeamStep';
 import './setup.css';
 
 export interface SetupWizardProps {
+  /** Primeira configuração: gera a escala ao terminar. */
   onFinish(): void;
   initialStep?: number;
+  /**
+   * Modo de edição (já existe escala): as mudanças são salvas na hora e este botão volta direto para a escala,
+   * ajustando-a à configuração nova sem regerar.
+   */
+  onBackToSchedule?(): void;
+  /** Modo de edição: gera uma escala nova do zero (pede confirmação). */
+  onRegenerate?(): void;
 }
 
 const STEPS = [
@@ -22,7 +30,8 @@ const STEPS = [
 
 const LAST = STEPS.length - 1;
 
-export function SetupWizard({ onFinish, initialStep = 0 }: SetupWizardProps) {
+export function SetupWizard({ onFinish, initialStep = 0, onBackToSchedule, onRegenerate }: SetupWizardProps) {
+  const editing = onBackToSchedule !== undefined;
   const document = useAppStore((s) => s.document);
   const resetToEmpty = useAppStore((s) => s.resetToEmpty);
   const [step, setStep] = useState(() => Math.min(LAST, Math.max(0, initialStep)));
@@ -49,24 +58,44 @@ export function SetupWizard({ onFinish, initialStep = 0 }: SetupWizardProps) {
     return true;
   };
 
+  /** Confere todas as etapas; se alguma tiver problema, vai até ela e mostra o motivo. */
+  const allValid = () => {
+    for (let i = 0; i <= LAST; i += 1) {
+      if (STEP_VALIDATORS[i](appStore.getState().document)) {
+        setStep(i);
+        setErrorStep(i);
+        return false;
+      }
+    }
+    return true;
+  };
+
   const next = () => {
     if (step < LAST) {
       goTo(step + 1);
       return;
     }
-    for (let i = 0; i <= LAST; i += 1) {
-      if (STEP_VALIDATORS[i](appStore.getState().document)) {
-        setStep(i);
-        setErrorStep(i);
-        return;
-      }
-    }
-    onFinish();
+    if (!allValid()) return;
+    if (editing) onBackToSchedule?.();
+    else onFinish();
+  };
+
+  const backToSchedule = () => {
+    if (allValid()) onBackToSchedule?.();
+  };
+
+  const regenerate = () => {
+    if (allValid()) onRegenerate?.();
   };
 
   return (
     <div className="setup">
       <header className="setup-header">
+        {editing && (
+          <button type="button" className="btn btn-sm setup-back" onClick={backToSchedule}>
+            <span aria-hidden="true">←</span> Voltar à escala
+          </button>
+        )}
         <div className="setup-header-top">
           <h1 className="setup-title">Configurar a escala</h1>
           <button type="button" className="btn btn-ghost setup-reset" onClick={() => setConfirmReset(true)}>
@@ -111,10 +140,18 @@ export function SetupWizard({ onFinish, initialStep = 0 }: SetupWizardProps) {
         </nav>
       </header>
 
-      {document.schedule !== null && (
-        <p className="setup-banner" role="status">
-          A escala já foi gerada. Ao terminar, você poderá gerar de novo com as mudanças.
-        </p>
+      {editing && (
+        <div className="setup-banner" role="status">
+          <p>
+            As mudanças são salvas na hora. Use <strong>Voltar à escala</strong> para ver a escala ajustada a elas — quem
+            entrou na equipe é encaixado sem mexer nos demais.
+          </p>
+          {onRegenerate && (
+            <button type="button" className="link-btn setup-regen" onClick={regenerate}>
+              Gerar escala nova do zero
+            </button>
+          )}
+        </div>
       )}
 
       <div ref={headingRef} tabIndex={-1} className="setup-body">
@@ -129,10 +166,10 @@ export function SetupWizard({ onFinish, initialStep = 0 }: SetupWizardProps) {
         )}
         <div className="setup-nav-buttons">
           <button type="button" className="btn" disabled={step === 0} onClick={() => goTo(step - 1)}>
-            Voltar
+            Anterior
           </button>
           <button type="button" className="btn btn-primary" onClick={next}>
-            {step === LAST ? 'Gerar escala' : 'Próximo'}
+            {step < LAST ? 'Próximo' : editing ? 'Salvar e voltar' : 'Gerar escala'}
           </button>
         </div>
       </footer>
