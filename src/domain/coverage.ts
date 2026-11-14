@@ -189,19 +189,19 @@ export function computeCoverage({ config, employees, schedule, marks }: Coverage
 }
 
 /** "à tarde", "de manhã", "à noite"; outros nomes viram "no turno X". */
-function shiftPhrase(name: string): string {
+export function shiftPhrase(name: string): string {
   const n = name.trim().toLowerCase();
   if (n === 'manhã' || n === 'manha' || n === 'madrugada') return `de ${n === 'manha' ? 'manhã' : n}`;
   if (n === 'tarde' || n === 'noite') return `à ${n}`;
   return `no turno ${name.trim()}`;
 }
 
-function joinPt(items: string[]): string {
+export function joinPt(items: string[]): string {
   if (items.length <= 1) return items.join('');
   return `${items.slice(0, -1).join(', ')} e ${items[items.length - 1]}`;
 }
 
-function weekdaysPhrase(weekdays: Weekday[]): string {
+export function weekdaysPhrase(weekdays: Weekday[]): string {
   if (weekdays.length === 7) return 'todos os dias';
   return joinPt(weekdays.map((w) => WEEKDAY_NAMES[w].toLowerCase()));
 }
