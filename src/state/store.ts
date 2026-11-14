@@ -1,0 +1,200 @@
+import { useStore } from 'zustand';
+import { createStore, type StoreApi } from 'zustand/vanilla';
+import { emptyDocument, exampleDocument } from '../domain/example';
+import {
+  CYCLE_DAYS,
+  type AppDocument,
+  type Cell,
+  type CoverageMark,
+  type Employee,
+  type Schedule,
+  type StoreConfig,
+} from '../domain/types';
+import { weekdayOf } from '../domain/time';
+import { parseDocument } from './schema';
+
+export const STORAGE_KEY = 'escala-5x2-clt:v1';
+
+export interface KeyValueStorage {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+}
+
+/** Devolve o storage se ele funciona de verdade (Safari privado, cookies bloqueados etc. lançam exceção). */
+export function probeStorage(candidate: () => KeyValueStorage | undefined): KeyValueStorage | null {
+  try {
+    const storage = candidate();
+    if (!storage) return null;
+    const probe = '__escala_probe__';
+    storage.setItem(probe, '1');
+    storage.removeItem(probe);
+    return storage;
+  } catch {
+    return null;
+  }
+}
+
+export interface AppState {
+  document: AppDocument;
+  /** false quando nada está sendo salvo no aparelho (R19). */
+  storageAvailable: boolean;
+  /** true quando já existe uma configuração salva (não é a primeira visita). */
+  hasSavedData: boolean;
+  lastBackupAt: string | null;
+
+  replaceDocument(document: AppDocument): void;
+  loadExample(): void;
+  resetToEmpty(): void;
+  updateConfig(patch: Partial<StoreConfig>): void;
+  addEmployee(employee: Employee): void;
+  updateEmployee(id: string, patch: Partial<Omit<Employee, 'id'>>): void;
+  removeEmployee(id: string): void;
+  setSchedule(schedule: Schedule | null): void;
+  setRow(employeeId: string, cells: Cell[]): void;
+  setCell(employeeId: string, day: number, cell: Cell): void;
+  setMarks(marks: CoverageMark[]): void;
+  markBackupDone(when?: Date): void;
+}
+
+/** Linha padrão: trabalha em dias abertos, "loja fechada" nos demais. O gerador encaixa as folgas. */
+export function defaultRow(config: StoreConfig): Cell[] {
+  return Array.from({ length: CYCLE_DAYS }, (_, day) => ({
+    status: config.days[weekdayOf(day)].open ? 'work' : 'closed',
+  }));
+}
+
+function markInvolves(mark: CoverageMark, employeeId: string): boolean {
+  return mark.coveredBy.kind === 'employee' && mark.coveredBy.employeeId === employeeId;
+}
+
+interface PersistedEnvelope {
+  document: AppDocument;
+  lastBackupAt: string | null;
+}
+
+export function createAppStore(storage: KeyValueStorage | null, now: () => Date = () => new Date()): StoreApi<AppState> {
+  let initial: AppDocument = emptyDocument(now());
+  let hasSavedData = false;
+  let lastBackupAt: string | null = null;
+
+  if (storage) {
+    try {
+      const raw = storage.getItem(STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Partial<PersistedEnvelope>;
+        const result = parseDocument(parsed.document);
+        if (result.ok) {
+          initial = result.document;
+          hasSavedData = true;
+          lastBackupAt = typeof parsed.lastBackupAt === 'string' ? parsed.lastBackupAt : null;
+        }
+      }
+    } catch {
+      // Dado corrompido: começa vazio, sem apagar nada até a próxima gravação.
+    }
+  }
+
+  const store = createStore<AppState>()((set, get) => {
+    const setDocument = (next: AppDocument) => set({ document: next, hasSavedData: true });
+    const doc = () => get().document;
+
+    return {
+      document: initial,
+      storageAvailable: storage !== null,
+      hasSavedData,
+      lastBackupAt,
+
+      replaceDocument: (document) => setDocument(document),
+      loadExample: () => setDocument(exampleDocument(now())),
+      resetToEmpty: () => set({ document: emptyDocument(now()), hasSavedData: false }),
+
+      updateConfig: (patch) => setDocument({ ...doc(), config: { ...doc().config, ...patch } }),
+
+      addEmployee: (employee) => {
+        const d = doc();
+        const schedule = d.schedule ? { ...d.schedule, [employee.id]: defaultRow(d.config) } : null;
+        setDocument({ ...d, employees: [...d.employees, employee], schedule });
+      },
+
+      updateEmployee: (id, patch) => {
+        const d = doc();
+        setDocument({ ...d, employees: d.employees.map((e) => (e.id === id ? { ...e, ...patch } : e)) });
+      },
+
+      removeEmployee: (id) => {
+        const d = doc();
+        let schedule = d.schedule;
+        if (schedule) {
+          schedule = { ...schedule };
+          delete schedule[id];
+        }
+        setDocument({
+          ...d,
+          employees: d.employees.filter((e) => e.id !== id),
+          schedule,
+          marks: d.marks.filter((m) => !markInvolves(m, id)),
+        });
+      },
+
+      setSchedule: (schedule) => setDocument({ ...doc(), schedule, marks: schedule ? doc().marks : [] }),
+
+      setRow: (employeeId, cells) => {
+        const d = doc();
+        if (!d.schedule) return;
+        setDocument({ ...d, schedule: { ...d.schedule, [employeeId]: cells } });
+      },
+
+      setCell: (employeeId, day, cell) => {
+        const d = doc();
+        const row = d.schedule?.[employeeId];
+        if (!d.schedule || !row) return;
+        const nextRow = row.slice();
+        nextRow[day] = cell;
+        setDocument({ ...d, schedule: { ...d.schedule, [employeeId]: nextRow } });
+      },
+
+      setMarks: (marks) => setDocument({ ...doc(), marks }),
+
+      markBackupDone: (when) => set({ lastBackupAt: (when ?? now()).toISOString() }),
+    };
+  });
+
+  if (storage) {
+    store.subscribe((state, prev) => {
+      if (state.document === prev.document && state.lastBackupAt === prev.lastBackupAt) return;
+      try {
+        if (!state.hasSavedData) {
+          storage.removeItem(STORAGE_KEY);
+          return;
+        }
+        const envelope: PersistedEnvelope = { document: state.document, lastBackupAt: state.lastBackupAt };
+        storage.setItem(STORAGE_KEY, JSON.stringify(envelope));
+      } catch {
+        store.setState({ storageAvailable: false });
+      }
+    });
+  }
+
+  return store;
+}
+
+/** Pede ao navegador para não apagar os dados do site (KTD10). Sem efeito onde não há suporte. */
+export async function requestPersistentStorage(): Promise<boolean> {
+  try {
+    if (typeof navigator !== 'undefined' && navigator.storage?.persist) {
+      return await navigator.storage.persist();
+    }
+  } catch {
+    // ignorado
+  }
+  return false;
+}
+
+export const appStore = createAppStore(
+  probeStorage(() => (typeof window !== 'undefined' ? window.localStorage : undefined)),
+);
+
+export function useAppStore<T>(selector: (state: AppState) => T): T {
+  return useStore(appStore, selector);
+}
