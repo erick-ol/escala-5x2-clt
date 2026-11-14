@@ -45,6 +45,7 @@ const employee = z.object({
   roleId: z.string(),
   secondaryRoleId: z.string().optional(),
   shiftId: z.string(),
+  floating: z.boolean().optional(),
   isWoman: z.boolean(),
   customHours: workHours.optional(),
 });

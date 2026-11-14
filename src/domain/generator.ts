@@ -30,6 +30,9 @@ const COMFORT_WORK_RUN = 5;
  */
 const VIOLATION_WEIGHT = 1_000_000;
 const GAP_WEIGHT = 1000;
+const MINUTES_IN_DAY = 24 * 60;
+/** 11h entre jornadas: só desempate na escolha de turno de quem não tem turno fixo (vira aviso, não regra). */
+const REST_11H = 11 * 60;
 /**
  * Todos os domingos do ciclo de folga: evitado acima de buracos (o domingo é dividido entre a equipe), mas
  * abaixo das regras legais (ex.: quem fecha no sábado à noite pode não ter 11h até o domingo de manhã).
@@ -74,6 +77,10 @@ class Solver {
   private readonly secondary: number[];
   /** Índice do turno do cadastro (-1 se o turno não existe). */
   private readonly home: number[];
+  /** Pessoas sem turno fixo: o gerador escolhe o turno de cada dia (`choice`). */
+  private readonly floating: boolean[];
+  /** choice[k][d]: turno escolhido para quem não tem turno fixo (começa no turno do cadastro). */
+  private readonly choice: number[][];
   /** Dias de turno único: todos trabalham no turno virtual (índice `single`). */
   private readonly singleDay: boolean[];
   /** Índice do turno virtual dos dias de turno único (depois dos turnos cadastrados). */
@@ -131,6 +138,8 @@ class Solver {
     this.nRoles = roleIndex.size;
     this.scratch = Array.from({ length: this.nRoles }, () => 0);
     this.home = all.map((e) => shiftIndex.get(e.shiftId) ?? -1);
+    this.floating = all.map((e, k) => !!e.floating && fixed[k] === null && config.shifts.length > 1);
+    this.choice = all.map((_, k) => Array.from({ length: CYCLE_DAYS }, () => this.home[k]));
 
     const zeros = () => Array.from({ length: CYCLE_DAYS }, () => 0);
     this.req = Array.from({ length: nShifts }, () => Array.from({ length: this.nRoles }, zeros));
@@ -162,7 +171,7 @@ class Solver {
       });
     });
     this.members = Array.from({ length: nShifts }, (_, s) =>
-      all.map((_, k) => k).filter((k) => this.at[k].includes(s) || this.home[k] === s || (s === this.single && this.hasSingle)),
+      all.map((_, k) => k).filter((k) => this.at[k].includes(s) || this.home[k] === s || (this.floating[k] && s < this.single) || (s === this.single && this.hasSingle)),
     );
     all.forEach((_, k) => {
       for (let d = 0; d < CYCLE_DAYS; d++) {
@@ -196,15 +205,107 @@ class Solver {
     return missing;
   }
 
-  /** Turno da pessoa k no dia d: o virtual nos dias de turno único, senão o do cadastro. */
+  /** Turno da pessoa k no dia d: o virtual nos dias de turno único; o escolhido, para quem não tem turno fixo; senão o do cadastro. */
   shiftOn(k: number, d: number): number {
-    return this.singleDay[d] ? this.single : this.home[k];
+    if (this.singleDay[d]) return this.single;
+    return this.floating[k] ? this.choice[k][d] : this.home[k];
+  }
+
+  /**
+   * Quem não tem turno fixo: em cada dia de trabalho, vai para o turno cadastrado onde deixa menos buracos no
+   * dia; empatado, onde a própria função fica com menos falta sem contar quem cobre pela segunda área (ex.: a
+   * balconista vai para a tarde na folga do balconista da tarde, em vez de tirar alguém do caixa); depois
+   * fica onde está e, por fim, no turno do cadastro. Repete até ninguém mudar.
+   */
+  placeFloaters(order: number[]): void {
+    for (let pass = 0; pass < MAX_PASSES; pass++) {
+      let moved = false;
+      for (const k of order) {
+        if (!this.floating[k]) continue;
+        for (let d = 0; d < CYCLE_DAYS; d++) if (this.placeOn(k, d)) moved = true;
+      }
+      if (!moved) break;
+    }
+  }
+
+  /** Buracos de todos os turnos cadastrados do dia d. */
+  private dayGaps(d: number): number {
+    let n = 0;
+    for (let s = 0; s < this.config.shifts.length; s++) n += this.gapAt(s, d);
+    return n;
+  }
+
+  /** Põe quem não tem turno fixo no melhor turno do dia d (ver placeFloaters). Devolve se mudou. */
+  private placeOn(k: number, d: number): boolean {
+    const now = this.at[k][d];
+    if (!this.floating[k] || now < 0 || this.singleDay[d]) return false;
+    const shifts = this.config.shifts.length;
+    const r = this.role[k];
+    const put = (s: number) => {
+      this.cnt[this.at[k][d]][r][d]--;
+      this.at[k][d] = s;
+      this.cnt[s][r][d]++;
+    };
+    /** Fechar à noite e abrir cedo no dia seguinte (menos de 11h): evitado quando não custa cobertura. */
+    const shortRests = (s: number) => {
+      const prev = this.at[k][(d + CYCLE_DAYS - 1) % CYCLE_DAYS];
+      const next = this.at[k][(d + 1) % CYCLE_DAYS];
+      let n = 0;
+      if (prev >= 0 && this.restBetween(prev, d - 1, s, d) < REST_11H) n++;
+      if (next >= 0 && this.restBetween(s, d, next, d + 1) < REST_11H) n++;
+      return n;
+    };
+    /** Falta da função da pessoa no dia, só com quem é dela (sem segunda área). */
+    const ownShort = () => {
+      let n = 0;
+      for (let s = 0; s < shifts; s++) n += Math.max(0, this.req[s][r][d] - this.cnt[s][r][d]);
+      return n;
+    };
+    let best = now;
+    let bestScore = [this.dayGaps(d), ownShort(), shortRests(now), 0, Number(now !== this.home[k])];
+    for (let s = 0; s < shifts; s++) {
+      if (s === now) continue;
+      put(s);
+      const score = [this.dayGaps(d), ownShort(), shortRests(s), 1, Number(s !== this.home[k])];
+      if (lexLess(score, bestScore)) {
+        best = s;
+        bestScore = score;
+      }
+      put(now);
+    }
+    this.choice[k][d] = best;
+    if (best === now) return false;
+    put(best);
+    return true;
+  }
+
+
+  /** Início e fim (minutos, fim depois do início) do turno s no dia d; o turno único usa o horário da loja. */
+  private shiftSpan(s: number, day: number): [number, number] {
+    const d = ((day % CYCLE_DAYS) + CYCLE_DAYS) % CYCLE_DAYS;
+    const sh = s === this.single ? this.config.days[weekdayOf(d)] : null;
+    const start = sh ? sh.opensAt : this.config.shifts[s].start;
+    const end = sh ? sh.closesAt : this.config.shifts[s].end;
+    return [start, end > start ? end : end + MINUTES_IN_DAY];
+  }
+
+  /** Minutos de descanso entre o turno a (dia da) e o turno b do dia seguinte. */
+  restBetween(a: number, da: number, b: number, db: number): number {
+    return MINUTES_IN_DAY + this.shiftSpan(b, db)[0] - this.shiftSpan(a, da)[1];
   }
 
   /** Buracos que dependem das folgas da pessoa k nos dias [from, to): turno do cadastro e turno único. */
   gapsFor(k: number, from: number, to: number): number {
     let n = 0;
-    for (let d = from; d < to; d++) n += this.gapAt(this.shiftOn(k, d), d);
+    for (let d = from; d < to; d++) {
+      // Sem turno fixo: a pessoa vai para o melhor turno do dia, então contam todos os turnos dele.
+      if (this.floating[k] && !this.singleDay[d]) {
+        this.placeOn(k, d);
+        n += this.dayGaps(d);
+      } else {
+        n += this.gapAt(this.shiftOn(k, d), d);
+      }
+    }
     return n;
   }
 
@@ -440,9 +541,16 @@ class Solver {
   }
 
   row(k: number): Cell[] {
-    return Array.from({ length: CYCLE_DAYS }, (_, d) => ({
-      status: !this.open[d] ? 'closed' : this.off[k][d] ? 'off' : 'work',
-    }));
+    return Array.from({ length: CYCLE_DAYS }, (_, d): Cell => {
+      if (!this.open[d]) return { status: 'closed' };
+      if (this.off[k][d]) return { status: 'off' };
+      const s = this.at[k][d];
+      // Sem turno fixo: o turno do dia fica na célula quando não é o do cadastro.
+      if (this.floating[k] && !this.singleDay[d] && s >= 0 && s !== this.home[k]) {
+        return { status: 'work', shiftId: this.config.shifts[s].id };
+      }
+      return { status: 'work' };
+    });
   }
 }
 
@@ -535,10 +643,20 @@ function combinations(items: number[], size: number): number[][] {
   return out;
 }
 
+/** Melhoria local e, para quem não tem turno fixo, escolha do turno de cada dia (duas rodadas). */
+function polish(solver: Solver, order: number[]): void {
+  solver.improve(order);
+  for (let round = 0; round < 2; round++) {
+    solver.placeFloaters(order);
+    solver.improve(order);
+  }
+  solver.placeFloaters(order);
+}
+
 function solve(solver: Solver, order: number[]): void {
   solver.assignSundays(order);
   solver.fillWeeks(order);
-  solver.improve(order);
+  polish(solver, order);
 }
 
 /** Determinístico: mesma entrada → mesma escala. Devolve a escala inteira (21 células por pessoa). */
@@ -561,7 +679,7 @@ export function generateSchedule(input: GenerateInput): Schedule {
   solve(seed, forward);
   const seeded = fresh(input.config);
   seeded.loadOffs(seed.off, forward);
-  seeded.improve(forward);
+  polish(seeded, forward);
   const best = seeded.cost(forward) < plain.cost(forward) ? seeded : plain;
   const schedule: Schedule = {};
   input.employees.forEach((e, i) => {

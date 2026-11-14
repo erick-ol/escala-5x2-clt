@@ -4,6 +4,9 @@ import { useAppStore } from '../../state/store';
 import { randomId } from './setupLogic';
 import { TimeInput } from './TimeInput';
 
+/** Valor do seletor de turno para quem não tem turno fixo (não é um turno cadastrado). */
+const FLOATING = '__sem_turno_fixo';
+
 export function TeamStep() {
   const config = useAppStore((s) => s.document.config);
   const employees = useAppStore((s) => s.document.employees);
@@ -96,16 +99,31 @@ export function TeamStep() {
                   <select
                     id={`emp-shift-${e.id}`}
                     className="input"
-                    value={e.shiftId}
-                    onChange={(ev) => updateEmployee(e.id, { shiftId: ev.target.value, customHours: undefined })}
+                    value={e.floating ? FLOATING : e.shiftId}
+                    aria-describedby={e.floating ? `emp-floating-hint-${e.id}` : undefined}
+                    onChange={(ev) =>
+                      ev.target.value === FLOATING
+                        ? updateEmployee(e.id, {
+                            floating: true,
+                            customHours: undefined,
+                            shiftId: config.shifts.some((s) => s.id === e.shiftId) ? e.shiftId : (config.shifts[0]?.id ?? ''),
+                          })
+                        : updateEmployee(e.id, { shiftId: ev.target.value, floating: undefined, customHours: undefined })
+                    }
                   >
-                    {!config.shifts.some((s) => s.id === e.shiftId) && <option value="">Escolha</option>}
+                    {!e.floating && !config.shifts.some((s) => s.id === e.shiftId) && <option value="">Escolha</option>}
                     {config.shifts.map((s) => (
                       <option key={s.id} value={s.id}>
                         {s.name || 'Sem nome'}
                       </option>
                     ))}
+                    {config.shifts.length > 1 && <option value={FLOATING}>Sem turno fixo</option>}
                   </select>
+                  {e.floating && (
+                    <p id={`emp-floating-hint-${e.id}`} className="hint">
+                      O site põe a pessoa na manhã ou na tarde, dia a dia, para cobrir as folgas da função.
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -134,50 +152,54 @@ export function TeamStep() {
                 </div>
               )}
 
-              <label className="checkbox">
-                <input
-                  type="checkbox"
-                  checked={hours !== undefined}
-                  onChange={(ev) =>
-                    updateEmployee(e.id, {
-                      customHours: ev.target.checked ? (shiftHours(e.shiftId) ?? undefined) : undefined,
-                    })
-                  }
-                />
-                <span>
-                  Horário próprio<span className="visually-hidden"> de {label}</span>
-                </span>
-              </label>
-              {hours && (
-                <div className="setup-hours">
-                  <div className="field">
-                    <span className="label">Entrada</span>
-                    <TimeInput label={`${label}: entrada`} value={hours.start} onChange={(v) => setCustom(e, { start: v })} />
-                  </div>
-                  <div className="field">
-                    <span className="label">Saída</span>
-                    <TimeInput label={`${label}: saída`} value={hours.end} onChange={(v) => setCustom(e, { end: v })} />
-                  </div>
-                  <div className="field">
-                    <label htmlFor={`emp-break-${e.id}`}>Intervalo (min)</label>
+              {!e.floating && (
+                <>
+                  <label className="checkbox">
                     <input
-                      id={`emp-break-${e.id}`}
-                      type="number"
-                      inputMode="numeric"
-                      min={0}
-                      step={5}
-                      className="input mono"
-                      value={hours.breakMinutes}
-                      onChange={(ev) => {
-                        const v = Number(ev.target.value);
-                        if (ev.target.value !== '' && Number.isFinite(v) && v >= 0 && v <= 600) {
-                          setCustom(e, { breakMinutes: Math.round(v) });
-                        }
-                      }}
+                      type="checkbox"
+                      checked={hours !== undefined}
+                      onChange={(ev) =>
+                        updateEmployee(e.id, {
+                          customHours: ev.target.checked ? (shiftHours(e.shiftId) ?? undefined) : undefined,
+                        })
+                      }
                     />
-                  </div>
-                  <span className="hint setup-hours-note">Trabalhado: {formatDuration(workedMinutes(hours))}</span>
-                </div>
+                    <span>
+                      Horário próprio<span className="visually-hidden"> de {label}</span>
+                    </span>
+                  </label>
+                  {hours && (
+                    <div className="setup-hours">
+                      <div className="field">
+                        <span className="label">Entrada</span>
+                        <TimeInput label={`${label}: entrada`} value={hours.start} onChange={(v) => setCustom(e, { start: v })} />
+                      </div>
+                      <div className="field">
+                        <span className="label">Saída</span>
+                        <TimeInput label={`${label}: saída`} value={hours.end} onChange={(v) => setCustom(e, { end: v })} />
+                      </div>
+                      <div className="field">
+                        <label htmlFor={`emp-break-${e.id}`}>Intervalo (min)</label>
+                        <input
+                          id={`emp-break-${e.id}`}
+                          type="number"
+                          inputMode="numeric"
+                          min={0}
+                          step={5}
+                          className="input mono"
+                          value={hours.breakMinutes}
+                          onChange={(ev) => {
+                            const v = Number(ev.target.value);
+                            if (ev.target.value !== '' && Number.isFinite(v) && v >= 0 && v <= 600) {
+                              setCustom(e, { breakMinutes: Math.round(v) });
+                            }
+                          }}
+                        />
+                      </div>
+                      <span className="hint setup-hours-note">Trabalhado: {formatDuration(workedMinutes(hours))}</span>
+                    </div>
+                  )}
+                </>
               )}
 
               <div className="setup-woman">

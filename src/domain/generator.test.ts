@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { computeCoverage, countGaps } from './coverage';
+import { exampleDocument as siteExample } from './example';
 import { referenceDocument as exampleDocument } from '../test/fixtures';
 import { fitEmployee, generateSchedule } from './generator';
 import { evaluateRules } from './rules';
@@ -412,3 +413,41 @@ describe('domingos divididos', () => {
   }
 });
 
+
+describe('sem turno fixo', () => {
+  it('quem não tem turno fixo vai para o turno onde falta gente e diminui os buracos', () => {
+    // Mercado de referência sem segunda área e uma balconista a mais: fixa na manhã ela não ajuda a tarde.
+    const { config, employees: base } = example();
+    const employees = base.map((e) => ({ ...e, secondaryRoleId: undefined }));
+    const extra = (floating: boolean): Employee => ({ id: 'nova', name: 'Nova', roleId: 'balconista', shiftId: 'manha', isWoman: false, floating });
+    const fixedTeam = [...employees, extra(false)];
+    const floatTeam = [...employees, extra(true)];
+    const fixed = generateSchedule({ config, employees: fixedTeam });
+    const floating = generateSchedule({ config, employees: floatTeam });
+    expect(fixed.nova.some((c) => c.shiftId === 'tarde')).toBe(false);
+    expect(floating.nova.some((c) => c.status === 'work' && c.shiftId === 'tarde')).toBe(true);
+    expect(countGaps(config, floatTeam, floating)).toBeLessThan(countGaps(config, fixedTeam, fixed));
+    // Só os dias de trabalho em turno cadastrado levam o turno na célula; folgas e turno único não.
+    for (const [d, c] of floating.nova.entries()) {
+      if (c.shiftId) {
+        expect(c.status).toBe('work');
+        expect(weekdayOf(d)).not.toBe(SUNDAY);
+      }
+    }
+    expect(forbiddenAlerts(config, floatTeam, floating)).toEqual([]);
+  });
+
+  it('no exemplo, a Rosi cobre o balcão da tarde nas folgas do Pedro, sem buraco nem alerta legal', () => {
+    const real = siteExample(new Date('2026-11-14'));
+    const schedule = generateSchedule(real);
+    // Em toda folga do Pedro (fora o domingo de turno único) em que a Rosi trabalha e a Rosa segura a manhã,
+    // a Rosi está na tarde. (Se a Rosa também folga, a Rosi fica na manhã e o Lucas cobre a tarde.)
+    const pedroOff = schedule.pedro.flatMap((c, d) => (c.status === 'off' && weekdayOf(d) !== SUNDAY ? [d] : []));
+    const covered = pedroOff.filter((d) => schedule.rosi[d].status === 'work' && schedule.rosa[d].status === 'work');
+    expect(covered.length).toBeGreaterThan(0);
+    for (const d of covered) expect(schedule.rosi[d].shiftId, `dia ${d}`).toBe('tarde');
+    expect(countGaps(real.config, real.employees, schedule)).toBe(0);
+    const alerts = Object.values(evaluateRules({ ...real, schedule })).flatMap((r) => r.alerts);
+    expect(alerts).toEqual([]);
+  });
+});

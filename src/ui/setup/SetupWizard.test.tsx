@@ -226,6 +226,22 @@ describe('SetupWizard', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('deixe pelo menos 2 dias abertos sem a marca "Sem folga"');
   });
 
+  test('"Sem turno fixo" no seletor de turno marca a pessoa e esconde o horário próprio', async () => {
+    const user = userEvent.setup();
+    seedThroughRoles();
+    appStore.getState().addEmployee({ id: 'p1', name: 'Rosi', roleId: 'balconista', shiftId: 'manha', isWoman: true });
+    render(<SetupWizard onFinish={() => {}} initialStep={3} />);
+    const select = screen.getByLabelText('Turno');
+    await user.selectOptions(select, 'Sem turno fixo');
+    expect(doc().employees[0]).toMatchObject({ floating: true, shiftId: 'manha' });
+    expect(screen.getByText(/O site põe a pessoa na manhã ou na tarde, dia a dia/)).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: /Horário próprio/ })).not.toBeInTheDocument();
+    await user.selectOptions(select, 'Tarde');
+    expect(doc().employees[0].floating).toBeUndefined();
+    expect(doc().employees[0].shiftId).toBe('tarde');
+    expect(screen.getByRole('checkbox', { name: /Horário próprio/ })).toBeInTheDocument();
+  });
+
   test('avançar sem nenhum funcionário mostra erro na etapa de equipe', async () => {
     const user = userEvent.setup();
     const onFinish = vi.fn();

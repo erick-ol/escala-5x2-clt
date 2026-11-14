@@ -109,7 +109,10 @@ export interface Employee {
   roleId: string;
   /** Segunda área: função que a pessoa cobre quando a principal já está completa naquele turno. */
   secondaryRoleId?: string;
+  /** Turno do cadastro (para quem não tem turno fixo, o turno de partida). */
   shiftId: string;
+  /** Sem turno fixo: o gerador põe a pessoa, dia a dia, no turno onde falta gente (cobre folgas). */
+  floating?: boolean;
   /** R5a: só altera a regra de domingo; nunca aparece na exportação. */
   isWoman: boolean;
   /** Horário do cadastro; se ausente, vale o padrão do turno. */

@@ -150,10 +150,10 @@ function buildDay(
   const shiftId = effectiveShiftId(config, e, cell, day);
   if (!hours) return { day: { ...base, kind: 'work', text: 'Trabalha (horário a definir)' }, minutes };
   minutes += workedMinutes(hours);
-  // Nome do turno só quando não é o do cadastro (turno único, troca de turno no dia).
+  // Nome do turno só quando não é o do cadastro (turno único, troca de turno no dia) ou a pessoa não tem turno fixo.
   const prefix = isVirtualShiftId(shiftId)
     ? `${SINGLE_SHIFT_NAME} `
-    : shiftId !== e.shiftId
+    : shiftId !== e.shiftId || e.floating
       ? `${findShift(config, shiftId)?.name ?? ''} `.trimStart()
       : '';
   const range = formatRange(hours);
@@ -172,6 +172,7 @@ function header(document: AppDocument, e: Employee, roleName: Map<string, string
   const secondary =
     e.secondaryRoleId && e.secondaryRoleId !== e.roleId ? roleName.get(e.secondaryRoleId) : undefined;
   const roleLine = secondary ? `${role} · cobre ${lower(secondary)} quando preciso` : role;
+  if (e.floating) return { roleLine, shiftLine: 'Sem turno fixo (manhã ou tarde, conforme a escala)' };
   const shift = config.shifts.find((s) => s.id === e.shiftId);
   const hours = registeredHours(config, e);
   const parts = [shift?.name ?? '', hours ? formatRange(hours) : ''];

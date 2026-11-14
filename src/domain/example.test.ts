@@ -47,7 +47,7 @@ describe('exemplo do site', () => {
     expect(by.Lucas).toMatchObject({ roleId: 'caixa', shiftId: 'tarde', secondaryRoleId: 'balconista', isWoman: false });
     expect(by.João).toMatchObject({ roleId: 'caixa', shiftId: 'tarde', isWoman: false });
     expect(by.João.secondaryRoleId).toBeUndefined();
-    expect(by.Rosi).toMatchObject({ roleId: 'balconista', shiftId: 'manha', isWoman: true });
+    expect(by.Rosi).toMatchObject({ roleId: 'balconista', shiftId: 'manha', floating: true, isWoman: true });
   });
 
   test('turnos de 8h trabalhadas cabem nas 40h; o domingo de turno único tem 6h', () => {

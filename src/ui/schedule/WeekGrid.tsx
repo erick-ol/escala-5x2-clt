@@ -100,6 +100,7 @@ function buildRows(doc: AppDocument, derived: Derived, week: number): GridRow[] 
 
 /** "Manhã 06:30–14:00": turno do cadastro com o horário da pessoa. */
 function shiftLabel(config: AppDocument['config'], employee: Employee): string {
+  if (employee.floating) return 'Sem turno fixo';
   const hours = registeredHours(config, employee);
   const name = shiftName(config, employee.shiftId);
   return hours ? `${name} ${formatTime(hours.start)}–${formatTime(hours.end)}` : name;
