@@ -11,8 +11,9 @@ describe('exemplo do site', () => {
   const doc = exampleDocument(new Date('2026-11-14'));
   const { config, employees } = doc;
 
-  test('loja: 40h, folgas separadas, seg–sáb 06:15–20:45 e domingo 06:45–13:45 em turno único', () => {
+  test('loja: 40h, folgas separadas, 11h ignoradas, seg–sáb 06:15–20:45 e domingo 06:45–13:45 em turno único', () => {
     expect(config.regime).toBe('40h');
+    expect(config.ignoreRest11h).toBe(true);
     expect(config.offPattern).toBe('flexible');
     for (let w = 0; w < 6; w++) expect(config.days[w]).toMatchObject({ open: true, opensAt: h(6, 15), closesAt: h(20, 45), singleShift: false });
     expect(config.days[6]).toMatchObject({ open: true, opensAt: h(6, 45), closesAt: h(13, 45), singleShift: true });
@@ -64,9 +65,7 @@ describe('exemplo do site', () => {
       const worked = Array.from({ length: WEEKS }, (_, w) => schedule[e.id][dayOfWeekday(w, SUNDAY)].status === 'work');
       expect(worked.some(Boolean), e.name).toBe(true);
     }
-    // Poucos buracos sobram: o balcão de domingo (2) e o caixa da tarde no sábado disputam as mesmas pessoas,
-    // porque quem fecha às 20:45 no sábado não tem 11h até as 06:45 de domingo.
-    const { gaps } = computeCoverage({ config, employees, schedule, marks: [] });
-    expect(gaps.length).toBeLessThanOrEqual(3);
+    // Com as 11h ignoradas, quem fecha no sábado pode abrir o domingo: tudo coberto.
+    expect(computeCoverage({ config, employees, schedule, marks: [] }).gaps).toEqual([]);
   });
 });

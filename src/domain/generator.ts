@@ -507,6 +507,7 @@ function maskCost(
  * descanso entre as jornadas. Acontece, por exemplo, entre o sábado à tarde e um domingo de turno único de manhã.
  */
 function restConflictMask(config: StoreConfig, employee: Employee): number {
+  if (config.ignoreRest11h) return 0;
   const work: Cell = { status: 'work' };
   const hours = Array.from({ length: CYCLE_DAYS }, (_, d) => effectiveHours(config, employee, work, d));
   let mask = 0;

@@ -342,7 +342,7 @@ export function evaluateEmployee(input: RulesInput, employeeId: string, options:
     const prevEnd = i === 0 ? prev.end - CYCLE_MINUTES : prev.end;
     const length = b.start - prevEnd;
     rests.push({ start: prevEnd, end: b.start, length });
-    if (length < INTERSHIFT_REST_MINUTES) {
+    if (!config.ignoreRest11h && length < INTERSHIFT_REST_MINUTES) {
       alert(
         'intershift-rest',
         b.day,
@@ -354,12 +354,14 @@ export function evaluateEmployee(input: RulesInput, employeeId: string, options:
 
   // Descanso semanal: em cada semana, um descanso de 35h seguidas do qual ao menos 24h caem dentro da semana.
   // Assim, uma folga que só invade a semana por algumas horas não conta para ela.
+  // Com as 11h ignoradas, o descanso semanal é só o das 24h.
+  const weeklyRest = config.ignoreRest11h ? WEEKLY_REST_CORE_MINUTES : WEEKLY_REST_MINUTES;
   if (timeline.length > 0) {
     for (let week = 0; week < weeks; week++) {
       const lo = week * WEEK_MINUTES;
       const hi = lo + WEEK_MINUTES;
       const ok = rests.some(
-        (r) => r.length >= WEEKLY_REST_MINUTES && overlap(r.start, r.end, lo, hi) >= WEEKLY_REST_CORE_MINUTES,
+        (r) => r.length >= weeklyRest && overlap(r.start, r.end, lo, hi) >= WEEKLY_REST_CORE_MINUTES,
       );
       if (!ok) {
         const longest = Math.max(
@@ -370,7 +372,7 @@ export function evaluateEmployee(input: RulesInput, employeeId: string, options:
           'weekly-rest',
           null,
           week,
-          `${weekName(week)} sem descanso de 35h seguidas (maior descanso: ${formatDuration(longest)})`,
+          `${weekName(week)} sem descanso de ${formatDuration(weeklyRest)} seguidas (maior descanso: ${formatDuration(longest)})`,
         );
       }
     }

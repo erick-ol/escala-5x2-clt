@@ -92,6 +92,11 @@ export interface StoreConfig {
   roles: Role[];
   minimums: Minimum[];
   regime: Regime;
+  /**
+   * Ignorar o descanso de 11h entre jornadas (CLT art. 66): o gerador deixa de evitar e as regras deixam de
+   * alertar; o descanso semanal passa a exigir só as 24h, sem as 11h somadas. Ausente = respeitar.
+   */
+  ignoreRest11h?: boolean;
   offPattern: OffPattern;
   /**
    * Horário preferido para o almoço começar (minutos desde 00:00). O planejador (lunch.ts) só marca um

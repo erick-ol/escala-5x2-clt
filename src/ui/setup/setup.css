@@ -230,3 +230,4 @@
   .confirm-actions { flex-direction: row; justify-content: flex-end; }
   .confirm-actions .btn { width: auto; }
 }
+.setup-rest-warning { margin: var(--s-2, 8px) 0 0; color: var(--gap); }

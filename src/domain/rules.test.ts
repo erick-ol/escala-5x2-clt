@@ -117,6 +117,32 @@ describe('motor de regras CLT', () => {
     });
   });
 
+  describe('11h ignoradas (opção da loja)', () => {
+    const late = at(h(13), h(20, 30), 60);
+    const early = at(h(5, 45), h(13, 30), 60);
+
+    test('sem alerta de descanso entre jornadas', () => {
+      const cells = withCells(std(), { 5: at(h(13), h(20, 30)), 6: at(h(5, 45), h(13, 30)) });
+      expect(ofKind(alerts(cells), 'intershift-rest')).toHaveLength(1);
+      expect(ofKind(alerts(cells, { config: { ignoreRest11h: true } }), 'intershift-rest')).toEqual([]);
+    });
+
+    test('descanso semanal passa a exigir só 24h', () => {
+      // Folga única entre saída 20:30 e entrada 5:45: 33h15, menos que 35h e mais que 24h.
+      const split: Cell[] = [W, late, O, early, late, O, early];
+      const cells = cycle(week5x2(), split, week5x2());
+      expect(ofKind(alerts(cells), 'weekly-rest')).toHaveLength(1);
+      expect(ofKind(alerts(cells, { config: { ignoreRest11h: true } }), 'weekly-rest')).toEqual([]);
+    });
+
+    test('mesmo com as 11h ignoradas, semana sem nenhum descanso de 24h alerta', () => {
+      // Semana inteira trabalhando: nenhum descanso de 24h.
+      const all: Cell[] = [W, W, W, W, W, W, W];
+      const list = ofKind(alerts(cycle(all, week5x2(), week5x2()), { config: { ignoreRest11h: true } }), 'weekly-rest');
+      expect(list.map((a) => a.message)).toEqual([expect.stringContaining('sem descanso de 24h seguidas')]);
+    });
+  });
+
   describe('rodízio de domingo', () => {
     test('AE5: sem R5a trabalhando os 3 domingos gera alerta', () => {
       const cells = withCells(std(), { 0: W, 7: W, 14: W, 1: O, 8: O, 15: O });

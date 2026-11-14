@@ -411,3 +411,23 @@ describe('domingos divididos', () => {
     });
   }
 });
+
+describe('11h ignoradas', () => {
+  it('quem fecha no sábado pode abrir o domingo de turno único, sem alerta', () => {
+    // Exemplo de referência com sábado sem folga: respeitando as 11h, a tarde não pode trabalhar no domingo
+    // (sai 20:30, domingo começa 07:00); ignorando, pode.
+    const base = example();
+    const days = base.config.days.map((d, w) => (w === 5 ? { ...d, noOff: true } : d));
+    const tardeSundays = (ignoreRest11h: boolean) => {
+      const config: StoreConfig = { ...base.config, days, ignoreRest11h };
+      const schedule = generateSchedule({ config, employees: base.employees });
+      const alerts = Object.values(evaluateRules({ config, employees: base.employees, schedule })).flatMap((r) => r.alerts);
+      expect(alerts.map((a) => a.message)).toEqual([]);
+      return base.employees
+        .filter((e) => e.shiftId === 'tarde')
+        .reduce((n, e) => n + Array.from({ length: WEEKS }, (_, w) => schedule[e.id][dayOfWeekday(w, SUNDAY)].status === 'work').filter(Boolean).length, 0);
+    };
+    expect(tardeSundays(false)).toBe(0);
+    expect(tardeSundays(true)).toBeGreaterThan(0);
+  });
+});
