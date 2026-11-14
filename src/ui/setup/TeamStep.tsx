@@ -1,24 +1,12 @@
-import { LEGAL_DATES } from '../../domain/legal';
 import { defaultBreakFor, formatDuration, workedMinutes } from '../../domain/time';
-import type { Employee, Regime, WorkHours } from '../../domain/types';
+import type { Employee, WorkHours } from '../../domain/types';
 import { useAppStore } from '../../state/store';
 import { randomId } from './setupLogic';
 import { TimeInput } from './TimeInput';
 
-const REGIMES: Array<{ value: Regime; title: string; detail: string }> = [
-  { value: '42h', title: '42h por semana', detail: `Transição, a partir de ${formatDate(LEGAL_DATES.start42h)}` },
-  { value: '40h', title: '40h por semana', detail: `A partir de ${formatDate(LEGAL_DATES.switch40h)}` },
-];
-
-function formatDate(iso: string): string {
-  const [y, m, d] = iso.split('-');
-  return `${d}/${m}/${y}`;
-}
-
 export function TeamStep() {
   const config = useAppStore((s) => s.document.config);
   const employees = useAppStore((s) => s.document.employees);
-  const updateConfig = useAppStore((s) => s.updateConfig);
   const addEmployee = useAppStore((s) => s.addEmployee);
   const updateEmployee = useAppStore((s) => s.updateEmployee);
   const removeEmployee = useAppStore((s) => s.removeEmployee);
@@ -50,29 +38,9 @@ export function TeamStep() {
   return (
     <section className="setup-step" aria-labelledby="step-team-title">
       <h2 id="step-team-title" className="setup-step-title">
-        Equipe e regime
+        Equipe
       </h2>
 
-      <fieldset className="setup-regime">
-        <legend className="label">Regime de horas</legend>
-        <div className="setup-regime-options">
-          {REGIMES.map((r) => (
-            <label key={r.value} className={`setup-regime-option${config.regime === r.value ? ' is-selected' : ''}`}>
-              <input
-                type="radio"
-                name="regime"
-                value={r.value}
-                checked={config.regime === r.value}
-                onChange={() => updateConfig({ regime: r.value })}
-              />
-              <span>
-                <strong>{r.title}</strong>
-                <span className="hint">{r.detail}</span>
-              </span>
-            </label>
-          ))}
-        </div>
-      </fieldset>
 
       <p className="hint">Cada pessoa herda o horário do turno. Marque "Horário próprio" para quem entra ou sai em outro horário.</p>
 

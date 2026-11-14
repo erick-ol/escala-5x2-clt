@@ -35,7 +35,7 @@ beforeEach(() => {
 });
 
 describe('SetupWizard', () => {
-  test('loja 6:30–20:30 com 2 turnos sugere 6:30–13:30 e 13:30–20:30, editáveis', async () => {
+  test('loja 6:30–20:30 com 2 turnos no regime de 42h sugere 06:30–15:54 e 11:06–20:30 (8h24 + 1h), sobrepostos e editáveis', async () => {
     const user = userEvent.setup();
     setConfig({ days: Array.from({ length: 7 }, () => ({ open: true, opensAt: h(6, 30), closesAt: h(20, 30) })) });
     render(<SetupWizard onFinish={() => {}} initialStep={1} />);
@@ -45,13 +45,13 @@ describe('SetupWizard', () => {
 
     const shifts = doc().config.shifts;
     expect(shifts.map((s) => [s.name, s.start, s.end, s.breakMinutes])).toEqual([
-      ['Manhã', h(6, 30), h(13, 30), 60],
-      ['Tarde', h(13, 30), h(20, 30), 60],
+      ['Manhã', h(6, 30), h(15, 54), 60],
+      ['Tarde', h(11, 6), h(20, 30), 60],
     ]);
     expect(new Set(shifts.map((s) => s.id)).size).toBe(2);
     expect(screen.getByLabelText('Turno 1: entrada')).toHaveValue('06:30');
-    expect(screen.getByLabelText('Turno 1: saída')).toHaveValue('13:30');
-    expect(screen.getByLabelText('Turno 2: entrada')).toHaveValue('13:30');
+    expect(screen.getByLabelText('Turno 1: saída')).toHaveValue('15:54');
+    expect(screen.getByLabelText('Turno 2: entrada')).toHaveValue('11:06');
     expect(screen.getByLabelText('Turno 2: saída')).toHaveValue('20:30');
 
     // Editável: mudar a saída da manhã grava no store.
@@ -62,6 +62,27 @@ describe('SetupWizard', () => {
     const ids = doc().config.shifts.map((s) => s.id);
     await user.click(screen.getByRole('button', { name: 'Sugerir turnos' }));
     expect(doc().config.shifts.map((s) => s.id)).toEqual(ids);
+
+    // No regime de 40h, cada turno tem 8h + 1h.
+    await user.click(screen.getByRole('radio', { name: /40h por semana/ }));
+    await user.click(screen.getByRole('button', { name: 'Sugerir turnos' }));
+    expect(doc().config.shifts.map((s) => [s.start, s.end])).toEqual([
+      [h(6, 30), h(15, 30)],
+      [h(11, 30), h(20, 30)],
+    ]);
+  });
+
+  test('horários são digitados em 24h, sem AM/PM', async () => {
+    const user = userEvent.setup();
+    setConfig({ days: Array.from({ length: 7 }, () => ({ open: true, opensAt: h(6, 30), closesAt: h(20, 30) })) });
+    render(<SetupWizard onFinish={() => {}} initialStep={1} />);
+    await user.click(screen.getByRole('button', { name: 'Sugerir turnos' }));
+    const field = screen.getByLabelText('Turno 1: saída');
+    expect(field).toHaveAttribute('type', 'text');
+    await user.clear(field);
+    await user.type(field, '1745');
+    expect(field).toHaveValue('17:45');
+    expect(doc().config.shifts[0].end).toBe(h(17, 45));
   });
 
   test('fechamento antes da abertura bloqueia o avanço com o motivo visível', async () => {
@@ -130,7 +151,7 @@ describe('SetupWizard', () => {
 
     await user.click(screen.getByRole('button', { name: 'Gerar escala' }));
     expect(screen.getByRole('alert')).toHaveTextContent('Cadastre pelo menos uma pessoa na equipe.');
-    expect(screen.getByRole('heading', { name: 'Equipe e regime' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Equipe' })).toBeInTheDocument();
     expect(onFinish).not.toHaveBeenCalled();
   });
 
@@ -187,7 +208,7 @@ describe('SetupWizard', () => {
   test('regime começa no padrão do store e pode ser trocado', async () => {
     const user = userEvent.setup();
     seedThroughRoles();
-    render(<SetupWizard onFinish={() => {}} initialStep={3} />);
+    render(<SetupWizard onFinish={() => {}} initialStep={1} />);
     expect(screen.getByRole('radio', { name: /42h por semana/ })).toBeChecked();
     await user.click(screen.getByRole('radio', { name: /40h por semana/ }));
     expect(doc().config.regime).toBe('40h');

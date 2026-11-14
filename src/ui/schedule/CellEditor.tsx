@@ -4,6 +4,7 @@ import { effectiveHours, effectiveShiftId, formatDuration, formatTime, isValidHo
 import { WEEKDAY_NAMES, type Cell, type CoverageMark, type WorkHours } from '../../domain/types';
 import { appStore, useAppStore } from '../../state/store';
 import { Sheet } from './Sheet';
+import { maskTime, TIME_FIELD_PROPS } from '../timeMask';
 
 export interface CellEditorProps {
   employeeId: string;
@@ -226,24 +227,24 @@ function HoursForm({ initial, canApplyAll, onApplyDay, onApplyAll }: HoursFormPr
           <label htmlFor={ids.start}>Entrada</label>
           <input
             id={ids.start}
-            type="time"
+            {...TIME_FIELD_PROPS}
             className="input mono"
             value={start}
             aria-invalid={dirty && !!error ? true : undefined}
             aria-describedby={dirty && error ? ids.error : undefined}
-            onChange={(ev) => setStart(ev.target.value)}
+            onChange={(ev) => setStart(maskTime(ev.target.value))}
           />
         </div>
         <div className="field">
           <label htmlFor={ids.end}>Saída</label>
           <input
             id={ids.end}
-            type="time"
+            {...TIME_FIELD_PROPS}
             className="input mono"
             value={end}
             aria-invalid={dirty && !!error ? true : undefined}
             aria-describedby={dirty && error ? ids.error : undefined}
-            onChange={(ev) => setEnd(ev.target.value)}
+            onChange={(ev) => setEnd(maskTime(ev.target.value))}
           />
         </div>
         <div className="field">

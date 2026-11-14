@@ -127,18 +127,28 @@ describe('RestoreBackupButton', () => {
 describe('suggestShifts', () => {
   const day = (opensAt: number, closesAt: number, open = true) => ({ open, opensAt, closesAt });
 
-  test('usa o dia aberto mais longo e divide em partes iguais', () => {
+  test('usa o dia aberto mais longo e a jornada oficial (8h24 + 1h no regime de 42h), sobrepondo os turnos', () => {
     const days = [day(480, 1080), day(390, 1230), day(0, 0, false), day(480, 1080), day(480, 1080), day(480, 1080), day(480, 720)];
     const three = suggestShifts(days, 3);
     expect(three.map((s) => [s.start, s.end])).toEqual([
-      [390, 670],
-      [670, 950],
-      [950, 1230],
+      [390, 954],
+      [530, 1094],
+      [666, 1230],
     ]);
+    expect(three.every((s) => s.end - s.start - s.breakMinutes === 504)).toBe(true);
     expect(three.map((s) => s.name)).toEqual(['Manhã', 'Tarde', 'Noite']);
     const one = suggestShifts(days, 1);
     expect(one).toHaveLength(1);
-    expect(one[0]).toMatchObject({ start: 390, end: 1230 });
+    expect(one[0]).toMatchObject({ start: 390, end: 954 });
+    expect(suggestShifts(days, 2, [], '40h').map((s) => [s.start, s.end])).toEqual([
+      [390, 930],
+      [690, 1230],
+    ]);
+  });
+
+  test('loja aberta menos tempo que um turno: o turno ocupa o horário inteiro', () => {
+    const short = Array.from({ length: 7 }, () => day(480, 840));
+    expect(suggestShifts(short, 1)[0]).toMatchObject({ start: 480, end: 840, breakMinutes: 15 });
   });
 
   test('sem dia aberto válido não sugere nada', () => {

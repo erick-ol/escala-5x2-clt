@@ -339,4 +339,19 @@ describe('motor de regras CLT', () => {
     expect(ofKind(alerts(allSundays, { config: { days } }), 'sunday-rotation')).toHaveLength(1);
     expect(ofKind(alerts(cycle([W, W, W, W, W, O, C], [W, W, W, W, W, O, C], [W, W, W, W, W, O, C]), { config: { days } }), 'sunday-rotation')).toHaveLength(0);
   });
+  test('regime de 42h aceita 8h24 por dia (liminar do STF); 40h aceita só 8h', () => {
+    const eight24 = withCells(std(), { 0: at(h(6, 30), h(15, 54), 60) });
+    expect(ofKind(alerts(eight24, { config: { regime: '42h' } }), 'daily-limit')).toHaveLength(0);
+    expect(ofKind(alerts(eight24, { config: { regime: '40h' } }), 'daily-limit')).toHaveLength(1);
+    const over = withCells(std(), { 0: at(h(6, 30), h(16, 0), 60) });
+    expect(ofKind(alerts(over, { config: { regime: '42h' } }), 'daily-limit')[0].message).toMatch(/8h24/);
+  });
+
+  test('cinco dias de 8h24 somam 42h e não passam do teto de 42h', () => {
+    const day = at(h(6, 30), h(15, 54), 60);
+    const week = [day, day, day, day, day, O, O];
+    const report = evaluateEmployee(input(cycle(week, week, week), { config: { regime: '42h' } }), 'e1');
+    expect(report.weeklyMinutes).toEqual([42 * 60, 42 * 60, 42 * 60]);
+    expect(report.alerts.filter((a) => a.kind === 'weekly-limit' || a.kind === 'daily-limit')).toHaveLength(0);
+  });
 });

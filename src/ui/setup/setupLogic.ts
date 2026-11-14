@@ -1,5 +1,6 @@
+import { DAILY_LIMIT_MINUTES } from '../../domain/legal';
 import { defaultBreakFor, isValidHours } from '../../domain/time';
-import { WEEKDAY_NAMES, type AppDocument, type Minimum, type Shift, type StoreConfig, type StoreDay } from '../../domain/types';
+import { WEEKDAY_NAMES, type AppDocument, type Minimum, type Regime, type Shift, type StoreConfig, type StoreDay } from '../../domain/types';
 
 /** Gera um id legível e único a partir de um nome ("Manhã" → "manha", "manha-2"...). */
 export function slugId(name: string, taken: Iterable<string>, fallback = 'item'): string {
@@ -44,20 +45,30 @@ export function longestOpenDay(days: StoreDay[]): StoreDay | null {
  * R2: divide o dia aberto mais longo em N turnos consecutivos de mesma duração (arredondada a 5min),
  * com o intervalo padrão de KTD17. Mantém os ids dos turnos existentes pela posição.
  */
-export function suggestShifts(days: StoreDay[], count: number, existing: Shift[] = []): Shift[] {
+/**
+ * Sugere turnos com a jornada oficial do regime: 8h24 trabalhadas no regime de 42h (liminar do STF)
+ * ou 8h no de 40h, mais o intervalo. O primeiro turno começa na abertura e o último termina no fechamento;
+ * os do meio ficam igualmente espaçados. Quando a soma passa do horário da loja, os turnos se sobrepõem
+ * e as equipes trabalham juntas no meio do dia.
+ */
+export function suggestShifts(days: StoreDay[], count: number, existing: Shift[] = [], regime: Regime = '42h'): Shift[] {
   const day = longestOpenDay(days);
   if (!day) return [];
   const n = Math.min(3, Math.max(1, Math.round(count)));
-  const total = day.closesAt - day.opensAt;
-  const step = Math.round(total / n / 5) * 5;
+  const span = day.closesAt - day.opensAt;
+  const worked = DAILY_LIMIT_MINUTES[regime];
+  const full = worked + defaultBreakFor(0, worked + 60);
+  const duration = Math.min(full, span);
   const names = SHIFT_NAMES[n];
   const shifts: Shift[] = [];
   for (let i = 0; i < n; i += 1) {
-    const start = day.opensAt + step * i;
-    const end = i === n - 1 ? day.closesAt : day.opensAt + step * (i + 1);
+    const offset = n === 1 ? 0 : Math.round(((span - duration) * i) / (n - 1) / 5) * 5;
+    const start = i === n - 1 && n > 1 ? day.closesAt - duration : day.opensAt + offset;
+    const end = start + duration;
     const name = names[i];
     const id = existing[i]?.id ?? slugId(name, [...existing.map((s) => s.id), ...shifts.map((s) => s.id)], 'turno');
-    shifts.push({ id, name, start, end, breakMinutes: defaultBreakFor(start, end) });
+    const breakMinutes = duration === full ? full - worked : defaultBreakFor(start, end);
+    shifts.push({ id, name, start, end, breakMinutes });
   }
   return shifts;
 }

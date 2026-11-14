@@ -198,15 +198,18 @@ export function evaluateEmployee(input: RulesInput, employeeId: string): Employe
     }
   }
 
-  // Por dia: limite de 8h (R17a) e intervalo intrajornada (KTD17).
+  // Por dia: limite de 8h24 (42h, liminar do STF) ou 8h (40h) (R17a) e intervalo intrajornada (KTD17).
   for (const b of blocks) {
     if (!b) continue;
-    if (b.worked > DAILY_LIMIT_MINUTES) {
+    const dailyLimit = DAILY_LIMIT_MINUTES[config.regime];
+    if (b.worked > dailyLimit) {
       alert(
         'daily-limit',
         b.day,
         weekOf(b.day),
-        `${formatDuration(b.worked)} trabalhadas no dia (limite de 8h). Mais de 8h por dia só com acordo ou convenção coletiva, durante a transição de 42h.`,
+        config.regime === '42h'
+          ? `${formatDuration(b.worked)} trabalhadas no dia (limite de 8h24 na transição de 42h). Acima disso, só com acordo ou convenção coletiva.`
+          : `${formatDuration(b.worked)} trabalhadas no dia (limite de 8h). Acima disso, só com acordo ou convenção coletiva.`,
       );
     }
     const checks =

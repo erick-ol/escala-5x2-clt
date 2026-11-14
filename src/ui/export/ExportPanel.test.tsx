@@ -217,8 +217,8 @@ describe('ExportPanel', () => {
 describe('LegalNotice', () => {
   it('mostra o aviso com as datas e o link oficial', () => {
     render(<LegalNotice />);
-    expect(screen.getByText(/EC 141\/2026/)).toHaveTextContent('15/12/2026');
-    expect(screen.getByText(/EC 141\/2026/)).toHaveTextContent('15/12/2027');
+    expect(screen.getByText(/EC 141\/2026/)).toHaveTextContent('16/12/2026');
+    expect(screen.getByText(/EC 141\/2026/)).toHaveTextContent('16/12/2027');
     expect(screen.getByText(/não substitui orientação jurídica/i)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Ver texto oficial' })).toHaveAttribute('href', expect.stringContaining('planalto.gov.br'));
   });

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { formatTime, parseTime } from '../../domain/time';
 import type { Minutes } from '../../domain/types';
+import { maskTime, TIME_FIELD_PROPS } from '../timeMask';
 
 interface TimeInputProps {
   value: Minutes;
@@ -11,7 +12,7 @@ interface TimeInputProps {
   disabled?: boolean;
 }
 
-/** Campo de horário que só grava valores completos; enquanto a pessoa digita, mantém o rascunho local. */
+/** Campo de horário em 24h que só grava valores completos; enquanto a pessoa digita, mantém o rascunho local. */
 export function TimeInput({ value, onChange, label, id, invalid, disabled }: TimeInputProps) {
   const [draft, setDraft] = useState(formatTime(value));
   const [synced, setSynced] = useState(value);
@@ -22,15 +23,16 @@ export function TimeInput({ value, onChange, label, id, invalid, disabled }: Tim
   return (
     <input
       id={id}
-      type="time"
+      {...TIME_FIELD_PROPS}
       className="input mono"
       aria-label={label}
       aria-invalid={invalid || undefined}
       disabled={disabled}
       value={draft}
       onChange={(e) => {
-        setDraft(e.target.value);
-        const parsed = parseTime(e.target.value);
+        const masked = maskTime(e.target.value);
+        setDraft(masked);
+        const parsed = parseTime(masked);
         if (parsed !== null && parsed !== value) {
           setSynced(parsed);
           onChange(parsed);
