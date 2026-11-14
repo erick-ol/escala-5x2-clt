@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { computeCoverage } from '../../domain/coverage';
-import { exampleDocument } from '../../domain/example';
+import { referenceDocument as exampleDocument } from '../../test/fixtures';
 import { generateSchedule } from '../../domain/generator';
 import { WEEKDAY_NAMES, type AppDocument } from '../../domain/types';
 import { appStore } from '../../state/store';

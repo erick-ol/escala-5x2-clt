@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { computeCoverage } from '../../domain/coverage';
-import { exampleDocument } from '../../domain/example';
+import { referenceDocument as exampleDocument } from '../../test/fixtures';
 import { generateSchedule } from '../../domain/generator';
 import { planLunches } from '../../domain/lunch';
 import { projectMonth } from '../../domain/month';

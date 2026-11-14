@@ -1,5 +1,5 @@
 import { computeCoverage, countGaps, gapKey, type CoverageInput } from './coverage';
-import { exampleDocument } from './example';
+import { referenceDocument as exampleDocument } from '../test/fixtures';
 import type { Cell, CoverageMark, Employee, Schedule, StoreConfig } from './types';
 import { CYCLE_DAYS } from './types';
 

@@ -1,4 +1,4 @@
-import { exampleDocument } from './example';
+import { referenceDocument as exampleDocument } from '../test/fixtures';
 import { generateSchedule } from './generator';
 import { reconcileDocument } from './reconcile';
 import { evaluateRules } from './rules';

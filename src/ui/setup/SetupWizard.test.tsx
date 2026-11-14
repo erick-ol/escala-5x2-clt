@@ -424,7 +424,7 @@ describe('SetupWizard', () => {
     const dialog = screen.getByRole('dialog', { name: 'Apagar tudo?' });
     expect(within(dialog).getByRole('button', { name: 'Cancelar' })).toHaveFocus();
     await user.click(within(dialog).getByRole('button', { name: 'Cancelar' }));
-    expect(doc().employees).toHaveLength(6);
+    expect(doc().employees).toHaveLength(7);
 
     await user.click(screen.getByRole('button', { name: 'Começar do zero' }));
     await user.click(screen.getByRole('button', { name: 'Apagar tudo e começar do zero' }));
@@ -436,13 +436,13 @@ describe('SetupWizard', () => {
 });
 
 describe('FirstVisit', () => {
-  test('"Ver exemplo" preenche 6 funcionários e chama onStart', async () => {
+  test('"Ver exemplo" preenche 7 funcionários e chama onStart', async () => {
     const user = userEvent.setup();
     const onStart = vi.fn();
     render(<FirstVisit onStart={onStart} />);
     expect(screen.getByRole('button', { name: 'Restaurar backup' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Ver exemplo' }));
-    expect(doc().employees).toHaveLength(6);
+    expect(doc().employees).toHaveLength(7);
     expect(onStart).toHaveBeenCalledTimes(1);
   });
 

@@ -1,5 +1,5 @@
 import { weekdayOfDate } from '../domain/dates';
-import { exampleDocument } from '../domain/example';
+import { referenceDocument as exampleDocument } from '../test/fixtures';
 import { generateSchedule } from '../domain/generator';
 import { weekdayOf } from '../domain/time';
 import type { AppDocument, Cell } from '../domain/types';

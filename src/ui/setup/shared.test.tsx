@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
-import { exampleDocument } from '../../domain/example';
+import { referenceDocument as exampleDocument } from '../../test/fixtures';
 import { serializeBackup } from '../../state/backup';
 import { appStore } from '../../state/store';
 import { ConfirmDialog } from '../ConfirmDialog';

@@ -43,7 +43,7 @@ export function FirstVisit({ onStart }: FirstVisitProps) {
         </button>
         <RestoreBackupButton variant="ghost" onRestored={onStart} />
       </div>
-      <p className="hint">O exemplo é um mercado com 6 funcionários. Dá para explorar e apagar depois.</p>
+      <p className="hint">O exemplo é um mercado com 7 funcionários. Dá para explorar e apagar depois.</p>
     </section>
   );
 }

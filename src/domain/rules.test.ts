@@ -1,4 +1,4 @@
-import { exampleDocument } from './example';
+import { referenceDocument as exampleDocument } from '../test/fixtures';
 import { evaluateEmployee, evaluateRules, type AlertKind, type LegalAlert, type RulesInput } from './rules';
 import type { Cell, Employee, ExtraShift, StoreConfig, WorkHours } from './types';
 

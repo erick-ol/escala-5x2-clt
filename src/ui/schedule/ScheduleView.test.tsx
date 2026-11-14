@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { exampleDocument } from '../../domain/example';
+import { referenceDocument as exampleDocument } from '../../test/fixtures';
 import { generateSchedule } from '../../domain/generator';
 import { computeCoverage } from '../../domain/coverage';
 import { WEEKDAY_NAMES, type AppDocument, type Cell, type Schedule } from '../../domain/types';

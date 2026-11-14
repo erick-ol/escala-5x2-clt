@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { computeCoverage, countGaps } from './coverage';
-import { exampleDocument } from './example';
+import { referenceDocument as exampleDocument } from '../test/fixtures';
 import { fitEmployee, generateSchedule } from './generator';
 import { evaluateRules } from './rules';
 import { dayOfWeekday, weekOf, weekdayOf } from './time';
@@ -333,15 +333,15 @@ describe('fitEmployee', () => {
     const gapsWithout = countGaps(config, employees, schedule);
     const gapsFitted = countGaps(config, all, fitted);
     expect(gapsFitted).toBeLessThan(gapsWithout);
-    // Com Pedro e a nova pessoa, o balcão da tarde só fica descoberto em domingos (os dois precisam de
-    // domingos de folga e as folgas em pares, sem 3 descansos seguidos, não deixam separá-los todos).
     const tarde = (s: Schedule, list: Employee[]) =>
       computeCoverage({ config, employees: list, schedule: s, marks: [] }).gaps.filter(
         (g) => g.roleId === 'balconista' && g.shiftId === 'tarde',
       );
     const after = tarde(fitted, all);
     expect(after.length).toBeLessThan(tarde(schedule, employees).length);
-    expect(after.every((g) => weekdayOf(g.day) === SUNDAY)).toBe(true);
+    // Só sobra falta no fim de semana: quem fecha o sábado à noite não tem 11h até o domingo de manhã, e
+    // ninguém fica com todos os domingos de folga, então quem trabalha um domingo folga no sábado antes.
+    expect(after.every((g) => weekdayOf(g.day) === SUNDAY || weekdayOf(g.day) === 5)).toBe(true);
   });
 
   it('funciona mesmo sem linha prévia da pessoa na escala', () => {
@@ -396,4 +396,18 @@ describe('dia sem folga', () => {
     const row = fitEmployee({ config, employees: [...base.employees, novo], schedule }, 'novo');
     for (let w = 0; w < WEEKS; w++) expect(row[dayOfWeekday(w, SATURDAY)].status).toBe('work');
   });
+});
+
+describe('domingos divididos', () => {
+  for (const offPattern of ['together', 'flexible'] as const) {
+    it(`ninguém fica com os 3 domingos do ciclo de folga (${offPattern}) e a cobertura não piora`, () => {
+      const { config, employees } = example(offPattern);
+      const schedule = generateSchedule({ config, employees });
+      for (const e of employees) {
+        const worked = Array.from({ length: WEEKS }, (_, w) => schedule[e.id][dayOfWeekday(w, SUNDAY)].status === 'work');
+        expect(worked.some(Boolean), e.name).toBe(true);
+      }
+      expect(countGaps(config, employees, schedule)).toBe(0);
+    });
+  }
 });

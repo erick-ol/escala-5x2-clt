@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { toBlob } from 'html-to-image';
-import { exampleDocument } from '../../domain/example';
+import { referenceDocument as exampleDocument } from '../../test/fixtures';
 import { generateSchedule } from '../../domain/generator';
 import { cellOnDate, projectMonth } from '../../domain/month';
 import { evaluateRules } from '../../domain/rules';

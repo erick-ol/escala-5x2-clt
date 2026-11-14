@@ -11,7 +11,7 @@ import {
   shiftMonth,
   weekdayOfDate,
 } from './dates';
-import { exampleDocument } from './example';
+import { referenceDocument as exampleDocument } from '../test/fixtures';
 import { generateSchedule } from './generator';
 import { cellOnDate, cycleDayOf, monthWeeks, projectMonth, projectWeek, weekAlertsAsCycle } from './month';
 import { reconcileDocument } from './reconcile';

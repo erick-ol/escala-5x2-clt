@@ -1,5 +1,5 @@
 import { computeCoverage } from './coverage';
-import { exampleDocument } from './example';
+import { referenceDocument as exampleDocument } from '../test/fixtures';
 import { generateSchedule } from './generator';
 import { suggestAll, suggestFor } from './suggestions';
 import type { Employee, StoreConfig } from './types';

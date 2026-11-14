@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from './App';
-import { exampleDocument } from './domain/example';
+import { referenceDocument as exampleDocument } from './test/fixtures';
 import { generateSchedule } from './domain/generator';
 import { appStore } from './state/store';
 

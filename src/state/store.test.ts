@@ -1,4 +1,4 @@
-import { exampleDocument } from '../domain/example';
+import { referenceDocument as exampleDocument } from '../test/fixtures';
 import { CYCLE_DAYS } from '../domain/types';
 import { createAppStore, defaultRow, probeStorage, STORAGE_KEY, UNREADABLE_KEY, type KeyValueStorage } from './store';
 
@@ -20,7 +20,7 @@ describe('store', () => {
     const a = createAppStore(storage, now);
     a.getState().loadExample();
     const b = createAppStore(storage, now);
-    expect(b.getState().document.employees).toHaveLength(6);
+    expect(b.getState().document.employees).toHaveLength(7);
     expect(b.getState().hasSavedData).toBe(true);
   });
 
@@ -44,7 +44,7 @@ describe('store', () => {
     const s = createAppStore(broken, now);
     expect(s.getState().storageAvailable).toBe(false);
     s.getState().loadExample();
-    expect(s.getState().document.employees).toHaveLength(6);
+    expect(s.getState().document.employees).toHaveLength(7);
   });
 
   test('falha ao gravar depois marca o armazenamento como indisponível', () => {
@@ -81,7 +81,7 @@ describe('store', () => {
       setItem(k, v);
     };
     window.dispatchEvent(new StorageEvent('storage', { key: STORAGE_KEY, newValue }));
-    expect(s.getState().document.employees).toHaveLength(6);
+    expect(s.getState().document.employees).toHaveLength(7);
     expect(writes).toBe(0);
   });
 

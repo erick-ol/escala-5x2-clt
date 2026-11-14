@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { exampleDocument } from '../../domain/example';
+import { referenceDocument as exampleDocument } from '../../test/fixtures';
 import { generateSchedule } from '../../domain/generator';
 import { cellOnDate, monthDates, projectMonth } from '../../domain/month';
 import { CYCLE_DAYS, type AppDocument } from '../../domain/types';

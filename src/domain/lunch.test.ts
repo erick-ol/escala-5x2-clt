@@ -1,5 +1,5 @@
 import { computeCoverage } from './coverage';
-import { exampleDocument } from './example';
+import { referenceDocument as exampleDocument } from '../test/fixtures';
 import { generateSchedule } from './generator';
 import {
   LUNCH_MAX_OFFSET,

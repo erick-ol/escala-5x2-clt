@@ -1,4 +1,4 @@
-import { exampleDocument } from './example';
+import { referenceDocument as exampleDocument } from '../test/fixtures';
 import {
   defaultBreakFor,
   effectiveHours,

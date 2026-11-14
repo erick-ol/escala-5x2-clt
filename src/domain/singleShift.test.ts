@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseDocument } from '../state/schema';
 import { computeCoverage } from './coverage';
-import { exampleDocument } from './example';
+import { referenceDocument as exampleDocument } from '../test/fixtures';
 import { generateSchedule } from './generator';
 import { LUNCH_MAX_OFFSET, LUNCH_MIN_OFFSET, planLunches } from './lunch';
 import { reconcileDocument } from './reconcile';
