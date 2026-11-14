@@ -16,9 +16,12 @@ export interface WeekGridProps {
   doc: AppDocument;
   derived: Derived;
   highlight: Highlight | null;
+  /** Dia cujo cabeçalho recebe o foco ao montar (ao voltar da visão do dia). */
+  focusDay?: number | null;
   onOpenCell(employeeId: string, day: number): void;
   onOpenGap(key: string): void;
   onOpenAlerts(employeeId: string, week: number): void;
+  onOpenDay(day: number): void;
 }
 
 interface GapEntry {
@@ -27,10 +30,11 @@ interface GapEntry {
 }
 
 type GridRow =
-  | { kind: 'group'; key: string; shiftId: string | null; label: string; tone: string }
+  | { kind: 'group'; key: string; roleId: string | null; label: string }
   | { kind: 'employee'; key: string; employee: Employee }
   | { kind: 'gap'; key: string; shiftId: string; roleId: string; slot: number; cells: (GapEntry | undefined)[] };
 
+/** Linhas da semana agrupadas pela função principal; as faltas de cada função ficam no fim do grupo, uma por turno. */
 function buildRows(doc: AppDocument, derived: Derived, week: number): GridRow[] {
   const { config, employees } = doc;
   const first = week * DAYS_PER_WEEK;
@@ -41,39 +45,55 @@ function buildRows(doc: AppDocument, derived: Derived, week: number): GridRow[] 
   ];
 
   const rows: GridRow[] = [];
-  const known = new Set(config.shifts.map((s) => s.id));
-  const groups: { shiftId: string | null; label: string; tone: string }[] = config.shifts.map((s) => ({
-    shiftId: s.id,
-    label: `${s.name} · ${formatTime(s.start)}–${formatTime(s.end)}`,
-    tone: shiftTone(config, s.id),
-  }));
-  if (employees.some((e) => !known.has(e.shiftId))) groups.push({ shiftId: null, label: 'Sem turno', tone: 'none' });
+  const known = new Set(config.roles.map((r) => r.id));
+  const groups: { roleId: string | null; label: string }[] = config.roles.map((r) => ({ roleId: r.id, label: r.name }));
+  if (employees.some((e) => !known.has(e.roleId))) groups.push({ roleId: null, label: 'Sem função' });
 
   for (const group of groups) {
-    const people = employees.filter((e) => (group.shiftId === null ? !known.has(e.shiftId) : e.shiftId === group.shiftId));
-    const groupGaps = group.shiftId === null ? [] : entries.filter((x) => x.gap.shiftId === group.shiftId);
+    const people = employees.filter((e) => (group.roleId === null ? !known.has(e.roleId) : e.roleId === group.roleId));
+    const groupGaps = group.roleId === null ? [] : entries.filter((x) => x.gap.roleId === group.roleId);
     if (people.length === 0 && groupGaps.length === 0) continue;
-    rows.push({ kind: 'group', key: `g-${group.shiftId ?? 'none'}`, ...group });
+    rows.push({ kind: 'group', key: `g-${group.roleId ?? 'none'}`, ...group });
     for (const employee of people) rows.push({ kind: 'employee', key: `e-${employee.id}`, employee });
-    if (group.shiftId === null) continue;
-    for (const role of config.roles) {
-      const forRole = groupGaps.filter((x) => x.gap.roleId === role.id);
-      if (forRole.length === 0) continue;
-      const slots = Math.max(...forRole.map((x) => x.gap.slot)) + 1;
+    if (group.roleId === null) continue;
+    const shiftIds = [...config.shifts.map((s) => s.id), ...new Set(groupGaps.map((x) => x.gap.shiftId))];
+    for (const shiftId of new Set(shiftIds)) {
+      const forShift = groupGaps.filter((x) => x.gap.shiftId === shiftId);
+      if (forShift.length === 0) continue;
+      const slots = Math.max(...forShift.map((x) => x.gap.slot)) + 1;
       for (let slot = 0; slot < slots; slot++) {
         const cells = Array.from({ length: DAYS_PER_WEEK }, (_, i) =>
-          forRole.find((x) => x.gap.slot === slot && x.gap.day === first + i),
+          forShift.find((x) => x.gap.slot === slot && x.gap.day === first + i),
         );
-        rows.push({ kind: 'gap', key: `v-${group.shiftId}-${role.id}-${slot}`, shiftId: group.shiftId, roleId: role.id, slot, cells });
+        rows.push({ kind: 'gap', key: `v-${group.roleId}-${shiftId}-${slot}`, shiftId, roleId: group.roleId, slot, cells });
       }
     }
   }
   return rows;
 }
 
-const NAV_KEYS = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'];
+/** "Manhã 06:30–14:00": turno do cadastro com o horário da pessoa. */
+function shiftLabel(config: AppDocument['config'], employee: Employee): string {
+  const hours = effectiveHours(config, employee, undefined);
+  const name = shiftName(config, employee.shiftId);
+  return hours ? `${name} ${formatTime(hours.start)}–${formatTime(hours.end)}` : name;
+}
 
-export function WeekGrid({ week, doc, derived, highlight, onOpenCell, onOpenGap, onOpenAlerts }: WeekGridProps) {
+const NAV_KEYS = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'];
+/** Linha dos cabeçalhos de dia na navegação por setas. */
+const HEAD_ROW = -1;
+
+export function WeekGrid({
+  week,
+  doc,
+  derived,
+  highlight,
+  focusDay = null,
+  onOpenCell,
+  onOpenGap,
+  onOpenAlerts,
+  onOpenDay,
+}: WeekGridProps) {
   const { config, employees, schedule } = doc;
   const gridRef = useRef<HTMLDivElement>(null);
   const [active, setActive] = useState<{ r: number; c: number }>({ r: -1, c: -1 });
@@ -128,10 +148,16 @@ export function WeekGrid({ week, doc, derived, highlight, onOpenCell, onOpenGap,
       return;
     }
     const step = event.key === 'ArrowUp' ? -1 : 1;
-    for (let k = r + step; k >= 0 && k < rows.length; k += step) if (focusAt(k, c)) return;
+    for (let k = r + step; k >= HEAD_ROW && k < rows.length; k += step) if (focusAt(k, c)) return;
   };
 
   const tabIndexFor = (r: number, c: number) => (r === current.r && c === current.c ? 0 : -1);
+
+  // Ao voltar da visão do dia, o foco volta ao cabeçalho daquele dia.
+  useEffect(() => {
+    if (focusDay === null || focusDay < first || focusDay >= first + DAYS_PER_WEEK) return;
+    focusAt(HEAD_ROW, focusDay - first);
+  }, [focusDay, first]);
 
   return (
     <div
@@ -146,18 +172,32 @@ export function WeekGrid({ week, doc, derived, highlight, onOpenCell, onOpenGap,
         <div role="columnheader" className="wg-corner">
           <span className="wg-week-tag">S{week + 1}</span>
         </div>
-        {Array.from({ length: DAYS_PER_WEEK }, (_, i) => {
-          const day = first + i;
-          const open = config.days[weekdayOf(day)]?.open;
+        {Array.from({ length: DAYS_PER_WEEK }, (_, c) => {
+          const day = first + c;
+          const wd = weekdayOf(day);
+          const open = config.days[wd]?.open;
           return (
             <div
               role="columnheader"
               key={day}
-              className={`wg-dayhead${open ? '' : ' is-closed'}${weekdayOf(day) === 6 ? ' is-sunday' : ''}`}
-              aria-label={`${WEEKDAY_NAMES[weekdayOf(day)]}, dia ${day + 1} do ciclo`}
+              className={`wg-dayhead${open ? '' : ' is-closed'}${wd === 6 ? ' is-sunday' : ''}`}
             >
-              <span className="wg-dayhead-name">{WEEKDAY_SHORT[weekdayOf(day)]}</span>
-              <span className="wg-dayhead-num mono">{day + 1}</span>
+              <button
+                type="button"
+                className="wg-daybtn"
+                aria-label={`${WEEKDAY_NAMES[wd]}, dia ${day + 1} do ciclo: ver o dia`}
+                data-r={HEAD_ROW}
+                data-c={c}
+                tabIndex={tabIndexFor(HEAD_ROW, c)}
+                onFocus={() => setActive({ r: HEAD_ROW, c })}
+                onClick={() => onOpenDay(day)}
+              >
+                <span className="wg-dayhead-name">{WEEKDAY_SHORT[wd]}</span>
+                <span className="wg-dayhead-num mono">{day + 1}</span>
+                <span className="wg-dayhead-more" aria-hidden="true">
+                  ver
+                </span>
+              </button>
             </div>
           );
         })}
@@ -166,9 +206,8 @@ export function WeekGrid({ week, doc, derived, highlight, onOpenCell, onOpenGap,
       {rows.map((row, r) => {
         if (row.kind === 'group') {
           return (
-            <div role="row" key={row.key} className={`wg-group tone-${row.tone}`}>
+            <div role="row" key={row.key} className="wg-group">
               <div role="rowheader" className="wg-group-label">
-                <span className="wg-group-swatch" aria-hidden="true" />
                 {row.label}
               </div>
             </div>
@@ -182,7 +221,7 @@ export function WeekGrid({ week, doc, derived, highlight, onOpenCell, onOpenGap,
             <div role="row" key={row.key} className="wg-line wg-gaprow">
               <div role="rowheader" className="wg-name wg-gapname" aria-label={`Vagas faltantes: ${role}, ${shift}`}>
                 <span className="wg-gapname-kicker">falta</span>
-                <span className="wg-gapname-role">{shortName(role)}</span>
+                <span className="wg-gapname-role">{shiftName(config, row.shiftId)}</span>
               </div>
               {row.cells.map((entry, c) => {
                 if (!entry) return <div role="gridcell" key={c} className="wg-cell wg-cell-empty" />;
@@ -240,7 +279,12 @@ export function WeekGrid({ week, doc, derived, highlight, onOpenCell, onOpenGap,
         return (
           <div role="row" key={row.key} className="wg-line wg-person">
             <div role="rowheader" className="wg-name" aria-label={employee.name} title={employee.name}>
-              <span className="wg-name-text">{shortName(employee.name)}</span>
+              <span className="wg-name-full" aria-hidden="true">
+                {employee.name}
+              </span>
+              <span className="wg-name-short" aria-hidden="true">
+                {shortName(employee.name)}
+              </span>
             </div>
             {Array.from({ length: DAYS_PER_WEEK }, (_, c) => {
               const day = first + c;
@@ -333,6 +377,7 @@ export function WeekGrid({ week, doc, derived, highlight, onOpenCell, onOpenGap,
               );
             })}
             <div role="gridcell" className="wg-meta">
+              <span className="wg-shiftlabel mono">{shiftLabel(config, employee)}</span>
               <span className="wg-hours">
                 <span className="visually-hidden">Horas na semana: </span>
                 <span className="mono">{formatDuration(minutes)}</span>

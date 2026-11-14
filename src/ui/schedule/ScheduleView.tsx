@@ -3,6 +3,8 @@ import { gapKey } from '../../domain/coverage';
 import { generateSchedule } from '../../domain/generator';
 import type { LegalAlert } from '../../domain/rules';
 import { WEEKS } from '../../domain/types';
+import { weekOf } from '../../domain/time';
+import { DayTimeline } from './DayTimeline';
 import { useAppStore } from '../../state/store';
 import { alertWeek, alertsInWeek, runGenerate, useDerived } from '../../state/useDerived';
 import { ConfirmDialog } from '../ConfirmDialog';
@@ -12,7 +14,6 @@ import { CoverageSummary } from './CoverageSummary';
 import { GapSheet } from './GapSheet';
 import { flexFor } from '../flex';
 import { plural, roleName } from './labels';
-import { useMediaQuery } from './useMediaQuery';
 import { WeekGrid, type Highlight } from './WeekGrid';
 import './schedule.css';
 
@@ -28,7 +29,6 @@ type AlertFilter = { employeeId: string; week: number } | 'all';
 export function ScheduleView({ onExport, initialError = null }: ScheduleViewProps) {
   const doc = useAppStore((s) => s.document);
   const derived = useDerived();
-  const wide = useMediaQuery('(min-width: 900px)');
   const [week, setWeek] = useState(0);
   const [error, setError] = useState<string | null>(initialError);
   const [editing, setEditing] = useState<{ employeeId: string; day: number } | null>(null);
@@ -36,6 +36,10 @@ export function ScheduleView({ onExport, initialError = null }: ScheduleViewProp
   const [alertFilter, setAlertFilter] = useState<AlertFilter | null>(null);
   const [highlight, setHighlight] = useState<Highlight | null>(null);
   const [confirmRegen, setConfirmRegen] = useState(false);
+  /** Dia aberto na visão do dia; null = visão da semana. */
+  const [dayView, setDayView] = useState<number | null>(null);
+  /** Dia cujo cabeçalho recebe o foco ao voltar para a semana. */
+  const [returnDay, setReturnDay] = useState<number | null>(null);
 
   const generate = () => setError(runGenerate());
 
@@ -58,7 +62,7 @@ export function ScheduleView({ onExport, initialError = null }: ScheduleViewProp
     );
   }
 
-  const { coverage, alerts, reports } = derived;
+  const { coverage, alerts, reports, lunchGaps } = derived;
 
   const hasManualChanges = () => {
     if (doc.marks.length > 0) return true;
@@ -78,6 +82,8 @@ export function ScheduleView({ onExport, initialError = null }: ScheduleViewProp
   const selectAlert = (alert: LegalAlert) => {
     const w = alertWeek(alert);
     if (w !== null) setWeek(w);
+    setDayView(null);
+    setReturnDay(null);
     setAlertFilter(null);
     setHighlight({ employeeId: alert.employeeId, day: alert.day });
   };
@@ -92,7 +98,29 @@ export function ScheduleView({ onExport, initialError = null }: ScheduleViewProp
     return { gap, mark };
   })();
 
-  const weeks = wide ? Array.from({ length: WEEKS }, (_, i) => i) : [week];
+  const openDay = (day: number) => {
+    setHighlight(null);
+    setDayView(day);
+  };
+  const backToWeek = () => {
+    if (dayView === null) return;
+    setWeek(weekOf(dayView));
+    setReturnDay(dayView);
+    setDayView(null);
+  };
+
+  const weekLunchGaps = lunchGaps.filter((g) => weekOf(g.day) === week).length;
+  const lunchLine =
+    lunchGaps.length === 0
+      ? null
+      : weekLunchGaps > 0
+        ? `Almoço sem cobertura: ${plural(weekLunchGaps, 'vez', 'vezes')} na semana ${week + 1}`
+        : `Almoço sem cobertura: ${plural(lunchGaps.length, 'vez', 'vezes')} no ciclo`;
+  const firstLunchGapDay = (() => {
+    const inWeek = lunchGaps.filter((g) => weekOf(g.day) === week);
+    const list = inWeek.length > 0 ? inWeek : lunchGaps;
+    return list.length > 0 ? Math.min(...list.map((g) => g.day)) : null;
+  })();
   const listAlerts =
     alertFilter === null
       ? []
@@ -107,11 +135,19 @@ export function ScheduleView({ onExport, initialError = null }: ScheduleViewProp
   return (
     <div className="sv">
       <div className="visually-hidden" aria-live="polite" aria-atomic="true">
-        {`${coverage.headline}. ${alerts.length === 0 ? 'Nenhum alerta legal' : plural(alerts.length, 'alerta legal', 'alertas legais')}.`}
+        {`${coverage.headline}. ${lunchLine ? `${lunchLine}. ` : ''}${alerts.length === 0 ? 'Nenhum alerta legal' : plural(alerts.length, 'alerta legal', 'alertas legais')}.`}
       </div>
 
       <div className="sv-top">
-        <CoverageSummary coverage={coverage} suggestions={derived.suggestions} />
+        <CoverageSummary
+          coverage={coverage}
+          suggestions={derived.suggestions}
+          lunch={
+            lunchLine && firstLunchGapDay !== null
+              ? { text: lunchLine, onOpen: () => openDay(firstLunchGapDay) }
+              : undefined
+          }
+        />
         <AlertCounter count={alerts.length} onOpen={() => setAlertFilter('all')} />
       </div>
 
@@ -124,43 +160,58 @@ export function ScheduleView({ onExport, initialError = null }: ScheduleViewProp
         </div>
       )}
 
-      {!wide && (
-        <div className="week-picker" role="group" aria-label="Semana do ciclo">
-          {Array.from({ length: WEEKS }, (_, i) => (
-            <button
-              key={i}
-              type="button"
-              className="week-picker-btn"
-              aria-pressed={week === i}
-              onClick={() => setWeek(i)}
-            >
-              Semana {i + 1}
-            </button>
-          ))}
-        </div>
-      )}
+      {dayView === null ? (
+        <>
+          <div className="week-picker" role="group" aria-label="Semana do ciclo">
+            {Array.from({ length: WEEKS }, (_, i) => (
+              <button
+                key={i}
+                type="button"
+                className="week-picker-btn"
+                aria-pressed={week === i}
+                onClick={() => {
+                  setReturnDay(null);
+                  setWeek(i);
+                }}
+              >
+                Semana {i + 1}
+              </button>
+            ))}
+          </div>
 
-      <div className={`sv-weeks${wide ? ' is-wide' : ''}`}>
-        {weeks.map((w) => (
-          <section key={w} className="sv-week" aria-labelledby={`sv-week-${w}`}>
-            <h2 id={`sv-week-${w}`} className="sv-week-title">
-              Semana {w + 1}
+          <section className="sv-week" aria-labelledby={`sv-week-${week}`}>
+            <h2 id={`sv-week-${week}`} className="sv-week-title">
+              Semana {week + 1}
             </h2>
+            <p className="sv-dayhint hint">Toque no dia (Seg, Ter…) para ver os horários e o almoço de cada pessoa.</p>
             <WeekGrid
-              week={w}
+              key={week}
+              week={week}
               doc={doc}
               derived={derived}
               highlight={highlight}
+              focusDay={returnDay}
               onOpenCell={(employeeId, day) => {
                 setHighlight(null);
                 setEditing({ employeeId, day });
               }}
               onOpenGap={setOpenGap}
               onOpenAlerts={(employeeId, wk) => setAlertFilter({ employeeId, week: wk })}
+              onOpenDay={openDay}
             />
           </section>
-        ))}
-      </div>
+        </>
+      ) : (
+        <DayTimeline
+          day={dayView}
+          doc={doc}
+          derived={derived}
+          onChangeDay={setDayView}
+          onBack={backToWeek}
+          onOpenCell={(employeeId, day) => setEditing({ employeeId, day })}
+          onOpenGap={setOpenGap}
+        />
+      )}
 
       <p className="sv-legend" aria-label="Legenda">
         <span className="legend-chip legend-off">F</span> folga
@@ -184,6 +235,7 @@ export function ScheduleView({ onExport, initialError = null }: ScheduleViewProp
           employeeId={editing.employeeId}
           day={editing.day}
           alerts={reports[editing.employeeId]?.alerts ?? []}
+          plannedBreakStart={derived.lunchPlan[editing.employeeId]?.[editing.day] ?? null}
           coveringRole={(() => {
             const f = flexFor(coverage, editing.employeeId, editing.day);
             return f ? roleName(doc.config, f.roleId) : undefined;

@@ -6,10 +6,24 @@ import { plural } from './labels';
 export interface CoverageSummaryProps {
   coverage: CoverageResult;
   suggestions: Map<string, Suggestion[]>;
+  /** Segunda linha: almoços que deixam uma função descoberta; tocar abre o dia. */
+  lunch?: { text: string; onOpen(): void };
+}
+
+function LunchLine({ lunch }: { lunch: NonNullable<CoverageSummaryProps['lunch']> }) {
+  return (
+    <button type="button" className="cov-lunch" onClick={lunch.onOpen}>
+      <span className="cov-lunch-icon" aria-hidden="true">
+        ▲
+      </span>
+      <span className="cov-lunch-text">{lunch.text}</span>
+      <span className="cov-lunch-more">Ver o dia</span>
+    </button>
+  );
 }
 
 /** Manchete da cobertura (R12); tocar abre as sugestões por padrão de buraco (R13). */
-export function CoverageSummary({ coverage, suggestions }: CoverageSummaryProps) {
+export function CoverageSummary({ coverage, suggestions, lunch }: CoverageSummaryProps) {
   const [open, setOpen] = useState(false);
   const panelId = useId();
   const { summary } = coverage;
@@ -24,6 +38,7 @@ export function CoverageSummary({ coverage, suggestions }: CoverageSummaryProps)
           <h2 className="cov-headline">Tudo coberto</h2>
           <p className="cov-sub">Todos os mínimos de cada turno estão atendidos nas 3 semanas.</p>
         </div>
+        {lunch && <LunchLine lunch={lunch} />}
       </section>
     );
   }
@@ -50,6 +65,7 @@ export function CoverageSummary({ coverage, suggestions }: CoverageSummaryProps)
           ›
         </span>
       </button>
+      {lunch && <LunchLine lunch={lunch} />}
       <div id={panelId} hidden={!open} className="cov-panel">
         {summary.map((item) => {
           const list = suggestions.get(`${item.roleId}|${item.shiftId}`) ?? [];

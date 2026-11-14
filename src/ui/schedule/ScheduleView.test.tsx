@@ -5,6 +5,8 @@ import { generateSchedule } from '../../domain/generator';
 import { computeCoverage } from '../../domain/coverage';
 import { WEEKDAY_NAMES, type AppDocument, type Cell, type Schedule } from '../../domain/types';
 import { appStore } from '../../state/store';
+import { deriveAll } from '../../state/useDerived';
+import { formatTime } from '../../domain/time';
 import { ScheduleView } from './ScheduleView';
 
 vi.mock('../../domain/generator', async (importOriginal) => {
@@ -339,5 +341,148 @@ describe('ScheduleView', () => {
     expect(live.textContent).toMatch(/buracos? por semana.*Nenhum alerta legal\./);
     act(() => appStore.getState().setCell('rosa', day, { status: 'off' }));
     expect(live.textContent).toMatch(new RegExp(`${weekday}.*alertas? lega`));
+  });
+});
+
+describe('ScheduleView: semana por função e visão do dia', () => {
+  /** Nomes das linhas (grupos e pessoas) na ordem da grade. */
+  const rowHeaders = () => screen.getAllByRole('rowheader').map((h) => h.getAttribute('aria-label') ?? h.textContent);
+
+  test('uma semana por vez, agrupada pela função principal, com turno e horas de cada pessoa', () => {
+    seed();
+    renderView();
+    expect(screen.getAllByRole('grid')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Semana 1' })).toHaveAttribute('aria-pressed', 'true');
+    const order = rowHeaders().filter((n) => !n?.startsWith('Vagas faltantes'));
+    expect(order).toEqual(['Caixa', 'Andreza', 'Richard', 'Lucas', 'João', 'Balconista', 'Rosa', 'Pedro']);
+    const rosa = screen.getByRole('rowheader', { name: 'Rosa' }).closest('[role="row"]') as HTMLElement;
+    expect(rosa).toHaveTextContent('Manhã 05:45–13:30');
+    expect(rosa).toHaveTextContent('33h45');
+    expect(screen.getByText(/Toque no dia/)).toBeInTheDocument();
+  });
+
+  test('as faltas ficam sob a função, uma linha por turno', async () => {
+    seedSingleGap();
+    const { user } = renderView();
+    await user.click(screen.getByRole('button', { name: 'Semana 2' }));
+    const order = rowHeaders();
+    const gapRow = order.indexOf('Vagas faltantes: Balconista, tarde');
+    expect(gapRow).toBeGreaterThan(order.indexOf('Pedro'));
+    expect(gapRow).toBeGreaterThan(order.indexOf('Balconista'));
+    expect(screen.getByRole('rowheader', { name: 'Vagas faltantes: Balconista, tarde' })).toHaveTextContent('Tarde');
+  });
+
+  test('o cabeçalho do dia abre a visão do dia com barras e almoço; "Voltar" devolve o foco ao dia', async () => {
+    seed();
+    const d = doc();
+    const derived = deriveAll(d, d.schedule!);
+    const blocks = derived.presence(1);
+    expect(blocks.length).toBeGreaterThan(0);
+    const { user } = renderView();
+
+    await user.click(screen.getByRole('button', { name: 'Terça, dia 2 do ciclo: ver o dia' }));
+    expect(screen.getByRole('heading', { name: 'Terça, dia 2 — Semana 1' })).toHaveFocus();
+    expect(screen.queryByRole('grid')).not.toBeInTheDocument();
+
+    for (const b of blocks) {
+      const name = d.employees.find((e) => e.id === b.employeeId)!.name;
+      const bar = screen.getByRole('button', { name: new RegExp(`^${name}: ${formatTime(b.start)}–${formatTime(b.end)}`) });
+      const group = bar.closest('[role="group"]') as HTMLElement;
+      expect(group).toHaveAccessibleName(d.config.roles.find((r) => r.id === b.roleId)!.name);
+      if (b.breakStart !== null && b.breakEnd !== null) {
+        const lunch = `Almoço ${formatTime(b.breakStart)}–${formatTime(b.breakEnd)}`;
+        expect(bar).toHaveAccessibleName(new RegExp(lunch.toLowerCase()));
+        expect(bar.querySelector('.dt-lunch')).not.toBeNull();
+        expect(bar.closest('li')).toHaveTextContent(lunch);
+        if (b.breakPlanned) expect(bar.closest('li')).toHaveTextContent('(sugerido)');
+      }
+    }
+    const offToday = d.employees.filter((e) => d.schedule![e.id][1].status === 'off').map((e) => e.name);
+    if (offToday.length > 0) expect(screen.getByText('De folga:').parentElement).toHaveTextContent(offToday.join(', '));
+
+    await user.click(screen.getByRole('button', { name: /^Próximo dia: Quarta, dia 3/ }));
+    expect(screen.getByRole('heading', { name: 'Quarta, dia 3 — Semana 1' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /Voltar para a semana/ }));
+    expect(screen.getByRole('grid', { name: 'Escala da semana 1' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Quarta, dia 3 do ciclo: ver o dia' })).toHaveFocus();
+  });
+
+  test('tocar numa barra da visão do dia abre o painel de edição da pessoa', async () => {
+    seed();
+    const { user } = renderView();
+    await user.click(screen.getByRole('button', { name: 'Segunda, dia 1 do ciclo: ver o dia' }));
+    await user.click(screen.getByRole('button', { name: /^Andreza: 06:30–14:00/ }));
+    expect(screen.getByRole('dialog', { name: 'Andreza' })).toHaveTextContent('Semana 1 · Segunda');
+  });
+
+  test('falta de cobertura no almoço aparece em laranja na faixa da função, com o texto', async () => {
+    seed();
+    const d = doc();
+    const { lunchGaps } = deriveAll(d, d.schedule!);
+    expect(lunchGaps.length).toBeGreaterThan(0);
+    const gap = lunchGaps[0];
+    const role = d.config.roles.find((r) => r.id === gap.roleId)!.name;
+    const { user } = renderView();
+    if (gap.day >= 7) await user.click(screen.getByRole('button', { name: `Semana ${Math.floor(gap.day / 7) + 1}` }));
+    await user.click(screen.getByRole('button', { name: new RegExp(`^${WEEKDAY_NAMES[gap.day % 7]}, dia ${gap.day + 1} do ciclo`) }));
+
+    const group = screen.getByRole('group', { name: role });
+    const text = `Falta${gap.missing > 1 ? 'm' : ''} ${gap.missing} ${role.toLowerCase()}${gap.missing > 1 ? 's' : ''} no almoço ${formatTime(gap.from)}–${formatTime(gap.to)}`;
+    expect(within(group).getByText(text)).toBeInTheDocument();
+    const sameDayRole = lunchGaps.filter((g) => g.day === gap.day && g.roleId === gap.roleId).length;
+    const segments = group.querySelectorAll<HTMLElement>('.dt-strip-gap');
+    expect(segments.length).toBeGreaterThanOrEqual(sameDayRole);
+    expect(segments[0].style.left).toMatch(/%$/);
+  });
+
+  test('o resumo mostra o almoço sem cobertura numa segunda linha que abre o dia', async () => {
+    seed();
+    const d = doc();
+    const { lunchGaps } = deriveAll(d, d.schedule!);
+    const week1 = lunchGaps.filter((g) => g.day < 7);
+    expect(week1.length).toBeGreaterThan(0);
+    const { user } = renderView();
+    const line = within(coverage()).getByRole('button', { name: /Almoço sem cobertura/ });
+    expect(line).toHaveTextContent(`Almoço sem cobertura: ${week1.length} ${week1.length === 1 ? 'vez' : 'vezes'} na semana 1`);
+    await user.click(line);
+    const first = Math.min(...week1.map((g) => g.day));
+    expect(screen.getByRole('heading', { name: `${WEEKDAY_NAMES[first]}, dia ${first + 1} — Semana 1` })).toBeInTheDocument();
+  });
+
+  test('"Almoço (início)" vem com o horário planejado e "Só este dia" grava breakStart na célula', async () => {
+    seed();
+    const d = doc();
+    const planned = deriveAll(d, d.schedule!).lunchPlan.andreza[0];
+    expect(planned).not.toBeNull();
+    const { user } = renderView();
+    await user.click(cell(/^Andreza, segunda, semana 1:/));
+    const sheet = screen.getByRole('dialog', { name: 'Andreza' });
+    const field = within(sheet).getByLabelText('Almoço (início)');
+    expect(field).toHaveValue(formatTime(planned!));
+
+    fireEvent.change(field, { target: { value: '13:00' } });
+    expect(sheet).toHaveTextContent('O almoço começa mais de 6h depois da entrada');
+    fireEvent.change(field, { target: { value: '10:00' } });
+    expect(sheet).not.toHaveTextContent('mais de 6h depois da entrada');
+    await user.click(within(sheet).getByRole('button', { name: 'Só este dia' }));
+    expect(doc().schedule!.andreza[0].hours).toEqual({ start: 390, end: 840, breakMinutes: 60, breakStart: 600 });
+    expect(doc().employees.find((e) => e.id === 'andreza')!.customHours).toBeUndefined();
+    expect(within(sheet).getByLabelText('Almoço (início)')).toHaveValue('10:00');
+  });
+
+  test('"Todos os dias" grava o início do almoço no cadastro', async () => {
+    seed();
+    const { user } = renderView();
+    await user.click(cell(/^Richard, terça, semana 1:/));
+    const sheet = screen.getByRole('dialog', { name: 'Richard' });
+    fireEvent.change(within(sheet).getByLabelText('Almoço (início)'), { target: { value: '11:15' } });
+    await user.click(within(sheet).getByRole('button', { name: 'Todos os dias' }));
+    expect(doc().employees.find((e) => e.id === 'richard')!.customHours).toEqual({
+      start: 390,
+      end: 840,
+      breakMinutes: 60,
+      breakStart: 675,
+    });
   });
 });

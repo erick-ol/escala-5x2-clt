@@ -87,7 +87,14 @@ export function effectiveHours(config: StoreConfig, employee: Employee, cell: Ce
   if (shiftId === employee.shiftId && employee.customHours) return employee.customHours;
   const shift = findShift(config, shiftId);
   if (!shift) return null;
-  return { start: shift.start, end: shift.end, breakMinutes: shift.breakMinutes };
+  return shiftHours(shift);
+}
+
+/** Horário padrão de um turno (com o início do almoço, se o turno define um). */
+export function shiftHours(shift: Shift): WorkHours {
+  const hours: WorkHours = { start: shift.start, end: shift.end, breakMinutes: shift.breakMinutes };
+  if (shift.breakStart !== undefined) hours.breakStart = shift.breakStart;
+  return hours;
 }
 
 export function isValidHours(hours: WorkHours): string | null {

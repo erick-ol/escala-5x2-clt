@@ -48,6 +48,11 @@ describe('App', () => {
     const user = userEvent.setup();
     render(<App />);
     expect(screen.getByRole('grid', { name: 'Escala da semana 1' })).toBeInTheDocument();
+    // Uma semana por vez em qualquer tela, com as abas de semana e as pessoas agrupadas por função.
+    expect(screen.getAllByRole('grid')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Semana 2' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('rowheader', { name: 'Caixa' })).toBeInTheDocument();
+    expect(screen.getByRole('rowheader', { name: 'Balconista' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Exportar' }));
     expect(screen.getByText('Exportar escala')).toBeInTheDocument();
   });

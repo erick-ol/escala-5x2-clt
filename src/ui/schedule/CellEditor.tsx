@@ -1,6 +1,18 @@
 import { useId, useState } from 'react';
 import type { LegalAlert } from '../../domain/rules';
-import { effectiveHours, effectiveShiftId, formatDuration, formatTime, isValidHours, parseTime, weekOf, weekdayOf, workedMinutes } from '../../domain/time';
+import {
+  MINUTES_PER_DAY,
+  effectiveHours,
+  effectiveShiftId,
+  formatDuration,
+  formatTime,
+  grossMinutes,
+  isValidHours,
+  parseTime,
+  weekOf,
+  weekdayOf,
+  workedMinutes,
+} from '../../domain/time';
 import { WEEKDAY_NAMES, type Cell, type CoverageMark, type WorkHours } from '../../domain/types';
 import { appStore, useAppStore } from '../../state/store';
 import { Sheet } from './Sheet';
@@ -13,6 +25,8 @@ export interface CellEditorProps {
   alerts: LegalAlert[];
   /** Nome da função que a pessoa cobre neste dia (segunda área), se houver. */
   coveringRole?: string;
+  /** Início do almoço planejado pelo site para este dia (usado quando não há um horário escolhido). */
+  plannedBreakStart?: number | null;
   onClose(): void;
 }
 
@@ -28,11 +42,20 @@ function withoutHours(cell: Cell): Cell {
 }
 
 function sameHours(a: WorkHours, b: WorkHours) {
-  return a.start === b.start && a.end === b.end && a.breakMinutes === b.breakMinutes;
+  return a.start === b.start && a.end === b.end && a.breakMinutes === b.breakMinutes && a.breakStart === b.breakStart;
+}
+
+/** Limite para começar o almoço: até a 6ª hora de trabalho. */
+const LATE_BREAK_MINUTES = 6 * 60;
+
+/** Minutos da entrada até o horário `m`, tratando jornada que cruza a meia-noite. */
+function sinceStart(start: number, m: number): number {
+  const d = m - start;
+  return d >= 0 ? d : d + MINUTES_PER_DAY;
 }
 
 /** Painel de edição de um dia: aplica na hora, com "Desfazer" para as mudanças feitas nesta sessão. */
-export function CellEditor({ employeeId, day, alerts, coveringRole, onClose }: CellEditorProps) {
+export function CellEditor({ employeeId, day, alerts, coveringRole, plannedBreakStart = null, onClose }: CellEditorProps) {
   const config = useAppStore((s) => s.document.config);
   const employee = useAppStore((s) => s.document.employees.find((e) => e.id === employeeId));
   const cell = useAppStore((s) => s.document.schedule?.[employeeId]?.[day]);
@@ -149,8 +172,9 @@ export function CellEditor({ employeeId, day, alerts, coveringRole, onClose }: C
               </div>
               {hours && (
                 <HoursForm
-                  key={`${hours.start}-${hours.end}-${hours.breakMinutes}`}
+                  key={`${hours.start}-${hours.end}-${hours.breakMinutes}-${hours.breakStart ?? ''}-${plannedBreakStart ?? ''}`}
                   initial={hours}
+                  plannedBreakStart={plannedBreakStart}
                   canApplyAll={isRegisteredShift}
                   onApplyDay={(h) => apply(() => appStore.getState().setCell(employeeId, day, { ...cell, hours: h }))}
                   onApplyAll={(h) =>
@@ -205,23 +229,44 @@ export function CellEditor({ employeeId, day, alerts, coveringRole, onClose }: C
 
 interface HoursFormProps {
   initial: WorkHours;
+  plannedBreakStart: number | null;
   canApplyAll: boolean;
   onApplyDay(hours: WorkHours): void;
   onApplyAll(hours: WorkHours): void;
 }
 
-function HoursForm({ initial, canApplyAll, onApplyDay, onApplyAll }: HoursFormProps) {
+function HoursForm({ initial, plannedBreakStart, canApplyAll, onApplyDay, onApplyAll }: HoursFormProps) {
+  const initialLunch = initial.breakStart ?? plannedBreakStart;
   const [start, setStart] = useState(formatTime(initial.start));
   const [end, setEnd] = useState(formatTime(initial.end));
   const [pause, setPause] = useState(String(initial.breakMinutes));
-  const ids = { start: useId(), end: useId(), pause: useId(), error: useId() };
+  const [lunch, setLunch] = useState(initialLunch === null ? '' : formatTime(initialLunch));
+  const ids = { start: useId(), end: useId(), pause: useId(), lunch: useId(), lunchHint: useId(), error: useId() };
 
   const s = parseTime(start);
   const e = parseTime(end);
   const b = /^\d+$/.test(pause.trim()) ? Number(pause) : null;
-  const draft: WorkHours | null = s !== null && e !== null && b !== null ? { start: s, end: e, breakMinutes: b } : null;
-  const error = draft ? isValidHours(draft) : 'Preencha entrada, saída (hh:mm) e intervalo em minutos.';
+  const lunchText = lunch.trim();
+  const l = lunchText === '' ? null : parseTime(lunchText);
+  const lunchInvalid = lunchText !== '' && l === null;
+  // O almoço só vira horário escolhido quando a pessoa já tinha um ou mexeu no campo;
+  // senão continua planejado pelo site (e acompanha as mudanças da equipe).
+  const lunchChosen = l !== null && (initial.breakStart !== undefined || l !== initialLunch);
+  const draft: WorkHours | null =
+    s !== null && e !== null && b !== null && !lunchInvalid
+      ? { start: s, end: e, breakMinutes: b, ...(lunchChosen ? { breakStart: l } : {}) }
+      : null;
+  let error = draft ? isValidHours(draft) : null;
+  if (!draft) {
+    error = lunchInvalid
+      ? 'Preencha o início do almoço em hh:mm ou deixe em branco.'
+      : 'Preencha entrada, saída (hh:mm) e intervalo em minutos.';
+  } else if (!error && draft.breakStart !== undefined && draft.breakMinutes > 0) {
+    const offset = sinceStart(draft.start, draft.breakStart);
+    if (offset + draft.breakMinutes > grossMinutes(draft)) error = 'O almoço precisa caber entre a entrada e a saída.';
+  }
   const dirty = !draft || !sameHours(draft, initial);
+  const lateLunch = s !== null && l !== null && sinceStart(s, l) > LATE_BREAK_MINUTES;
 
   return (
     <div className="hours-form">
@@ -264,6 +309,33 @@ function HoursForm({ initial, canApplyAll, onApplyDay, onApplyAll }: HoursFormPr
           />
         </div>
       </div>
+      <div className="field lunch-field">
+        <label htmlFor={ids.lunch}>Almoço (início)</label>
+        <input
+          id={ids.lunch}
+          {...TIME_FIELD_PROPS}
+          className="input mono"
+          value={lunch}
+          aria-invalid={lunchInvalid ? true : undefined}
+          aria-describedby={ids.lunchHint}
+          onChange={(ev) => setLunch(maskTime(ev.target.value))}
+        />
+        <p id={ids.lunchHint} className="hint lunch-hint">
+          {initial.breakStart !== undefined
+            ? 'Horário escolhido. Apague para o site sugerir.'
+            : plannedBreakStart !== null
+              ? 'Sugerido pelo site para ninguém deixar a função descoberta.'
+              : 'Em branco: o site sugere o horário.'}
+        </p>
+      </div>
+      {lateLunch && (
+        <p className="lunch-late">
+          <span className="alert-icon" aria-hidden="true">
+            !
+          </span>
+          <span className="visually-hidden">Alerta legal: </span>O almoço começa mais de 6h depois da entrada. Pela CLT, o intervalo deve começar até a 6ª hora de trabalho.
+        </p>
+      )}
       {!dirty && (
         <p className="hint mono">{formatDuration(workedMinutes(initial))} trabalhadas no dia</p>
       )}
@@ -275,7 +347,14 @@ function HoursForm({ initial, canApplyAll, onApplyDay, onApplyAll }: HoursFormPr
       {dirty && draft && !error && (
         <div className="apply-scope" role="group" aria-label="Aplicar o novo horário a">
           <p className="apply-scope-q">
-            Aplicar <span className="mono">{formatTime(draft.start)}–{formatTime(draft.end)}</span> a:
+            Aplicar <span className="mono">{formatTime(draft.start)}–{formatTime(draft.end)}</span>
+            {draft.breakStart !== undefined && (
+              <>
+                {' '}
+                com almoço às <span className="mono">{formatTime(draft.breakStart)}</span>
+              </>
+            )}{' '}
+            a:
           </p>
           <div className="apply-scope-btns">
             <button type="button" className="btn btn-sm" onClick={() => onApplyDay(draft)}>

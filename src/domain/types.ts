@@ -114,6 +114,8 @@ export interface ExtraShift {
   employeeId: string;
   day: DayIndex;
   shiftId: string;
+  /** Função da vaga coberta (para o planejamento do almoço). Ausente em dados antigos: vale a função principal. */
+  roleId?: string;
   hours: WorkHours;
 }
 

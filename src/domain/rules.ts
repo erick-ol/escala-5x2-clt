@@ -5,6 +5,7 @@ import {
   WEEKLY_LIMIT_MINUTES,
   WEEKLY_REST_MINUTES,
 } from './legal';
+import { LUNCH_MAX_OFFSET, explicitLunchStart, extraLunchKey, type LunchPlan } from './lunch';
 import { MINUTES_PER_DAY, effectiveHours, formatDuration, grossMinutes, weekOf, workedMinutes } from './time';
 import {
   CYCLE_DAYS,
@@ -25,6 +26,7 @@ export type AlertKind =
   | 'days-off'
   | 'too-many-offs'
   | 'break'
+  | 'break-late'
   | 'intershift-rest'
   | 'weekly-rest'
   | 'sunday-rotation'
@@ -52,6 +54,11 @@ export interface RulesInput {
   schedule: Schedule;
   /** Jornadas extras de "coberto por [funcionário]" (KTD16). */
   extraShifts?: ExtraShift[];
+  /**
+   * Almoços planejados pelo site (lunch.ts). Com ele, o almoço planejado entra na conferência de
+   * 'break-late'; o início informado (`breakStart`) sempre entra. Sem nenhum dos dois, não confere.
+   */
+  lunchPlan?: LunchPlan;
 }
 
 const CYCLE_MINUTES = CYCLE_DAYS * MINUTES_PER_DAY;
@@ -84,6 +91,8 @@ export function workStreaks(worked: boolean[]): { start: DayIndex; length: numbe
 /** Jornada posicionada na linha do tempo do ciclo (minutos desde segunda 00:00 da semana 1). */
 interface Jornada {
   day: DayIndex;
+  /** Chave da jornada no LunchPlan. */
+  lunchKey: string;
   hours: WorkHours;
   start: number;
   end: number;
@@ -101,9 +110,9 @@ interface DayBlock {
   jornadas: Jornada[];
 }
 
-function toJornada(day: DayIndex, hours: WorkHours): Jornada {
+function toJornada(day: DayIndex, hours: WorkHours, lunchKey: string): Jornada {
   const start = day * MINUTES_PER_DAY + hours.start;
-  return { day, hours, start, end: start + grossMinutes(hours), worked: workedMinutes(hours) };
+  return { day, lunchKey, hours, start, end: start + grossMinutes(hours), worked: workedMinutes(hours) };
 }
 
 function buildDays(
@@ -120,10 +129,10 @@ function buildDays(
     const jornadas: Jornada[] = [];
     if (cell?.status === 'work') {
       const hours = effectiveHours(input.config, employee, cell);
-      if (hours) jornadas.push(toJornada(day, hours));
+      if (hours) jornadas.push(toJornada(day, hours, employee.id));
       else missingHours.push(day);
     }
-    for (const x of extras) if (x.day === day) jornadas.push(toJornada(day, x.hours));
+    for (const x of extras) if (x.day === day) jornadas.push(toJornada(day, x.hours, extraLunchKey(x)));
     worked.push(cell?.status === 'work' || jornadas.length > 0);
     if (jornadas.length === 0) {
       blocks.push(null);
@@ -247,6 +256,15 @@ export function evaluateEmployee(input: RulesInput, employeeId: string): Employe
         weekOf(b.day),
         `Intervalo de ${formatDuration(tooLong.hours.breakMinutes)} (máximo de 2h sem acordo ou convenção coletiva)`,
       );
+    }
+    // Almoço tem de começar até a 6ª hora de trabalho (início informado ou planejado pelo site).
+    for (const j of b.jornadas) {
+      if (j.worked <= 6 * 60 || j.hours.breakMinutes <= 0) continue;
+      const lunch = explicitLunchStart(j.hours) ?? input.lunchPlan?.[j.lunchKey]?.[j.day] ?? null;
+      if (lunch !== null && lunch - j.hours.start > LUNCH_MAX_OFFSET) {
+        alert('break-late', b.day, weekOf(b.day), 'Almoço começa depois de 6h de trabalho (máximo 6h antes da pausa)');
+        break;
+      }
     }
     if (failed) {
       alert(

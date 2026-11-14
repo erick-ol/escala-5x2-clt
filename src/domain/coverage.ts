@@ -1,4 +1,4 @@
-import { effectiveShiftId, weekdayOf } from './time';
+import { effectiveShiftId, shiftHours, weekdayOf } from './time';
 import {
   CYCLE_DAYS,
   WEEKDAY_NAMES,
@@ -235,7 +235,8 @@ export function computeCoverage({ config, employees, schedule, marks }: Coverage
           employeeId: coverer.id,
           day: m.day,
           shiftId: m.shiftId,
-          hours: { start: shift.start, end: shift.end, breakMinutes: shift.breakMinutes },
+          roleId: m.roleId,
+          hours: shiftHours(shift),
         });
       }
     }

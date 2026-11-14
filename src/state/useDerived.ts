@@ -1,10 +1,11 @@
 import { useEffect, useMemo } from 'react';
 import { computeCoverage, type CoverageResult } from '../domain/coverage';
 import { fitEmployee, generateSchedule } from '../domain/generator';
+import { findLunchGaps, planLunches, presenceForDay, type LunchGap, type LunchInput, type LunchPlan, type PresenceBlock } from '../domain/lunch';
 import { evaluateRules, type EmployeeReport, type LegalAlert } from '../domain/rules';
 import { suggestAll, type Suggestion } from '../domain/suggestions';
 import { weekOf } from '../domain/time';
-import type { AppDocument, Schedule } from '../domain/types';
+import type { AppDocument, DayIndex, Schedule } from '../domain/types';
 import { appStore, useAppStore } from './store';
 
 export interface Derived {
@@ -14,16 +15,38 @@ export interface Derived {
   alerts: LegalAlert[];
   /** Sugestões por item do resumo, chave `${roleId}|${shiftId}`. */
   suggestions: Map<string, Suggestion[]>;
+  /** Início do almoço de cada pessoa em cada dia (explícito ou planejado pelo site); null quando não trabalha. */
+  lunchPlan: LunchPlan;
+  /** Trechos em que uma função fica abaixo do mínimo por causa dos almoços. */
+  lunchGaps: LunchGap[];
+  /** Quem está na loja num dia, com entrada, saída e almoço (para a visão do dia). */
+  presence(day: DayIndex): PresenceBlock[];
 }
 
-/** Cobertura → jornadas extras → regras CLT → sugestões (R16), recalculado a cada mudança do documento. */
+/**
+ * Cobertura → almoços → regras CLT → sugestões (R16), recalculado a cada mudança do documento.
+ * Os almoços usam a cobertura (segunda área e jornadas extras) para saber quem conta em cada função.
+ */
 export function deriveAll(doc: AppDocument, schedule: Schedule): Derived {
   const { config, employees, marks } = doc;
   const coverage = computeCoverage({ config, employees, schedule, marks });
-  const reports = evaluateRules({ config, employees, schedule, extraShifts: coverage.extraShifts });
+  const lunchInput: LunchInput = { config, employees, schedule, flex: coverage.flex, extraShifts: coverage.extraShifts };
+  const lunchPlan = planLunches(lunchInput);
+  const lunchGaps = findLunchGaps(lunchInput, lunchPlan);
+  const rulesInput = { config, employees, schedule, extraShifts: coverage.extraShifts, lunchPlan };
+  const reports = evaluateRules(rulesInput);
   const alerts = employees.flatMap((e) => reports[e.id]?.alerts ?? []);
   const suggestions = suggestAll({ config, employees, schedule }, coverage.summary);
-  return { coverage, reports, alerts, suggestions };
+  const presenceCache = new Map<DayIndex, PresenceBlock[]>();
+  const presence = (day: DayIndex) => {
+    let blocks = presenceCache.get(day);
+    if (!blocks) {
+      blocks = presenceForDay(lunchInput, lunchPlan, day);
+      presenceCache.set(day, blocks);
+    }
+    return blocks;
+  };
+  return { coverage, reports, alerts, suggestions, lunchPlan, lunchGaps, presence };
 }
 
 /** Semana a que um alerta pertence; null quando vale para o ciclo inteiro. */

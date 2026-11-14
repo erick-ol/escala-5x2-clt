@@ -110,7 +110,7 @@ describe('cobertura', () => {
     expect(r.covered.map(gapKey)).toEqual([gapKey(mark)]);
     expect(r.gaps).toEqual([{ day: 2, shiftId: 'tarde', roleId: 'caixa', slot: 0 }]);
     expect(r.extraShifts).toEqual([
-      { employeeId: 'joao', day: 2, shiftId: 'tarde', hours: { start: h(13), end: h(20, 30), breakMinutes: 60 } },
+      { employeeId: 'joao', day: 2, shiftId: 'tarde', roleId: 'balconista', hours: { start: h(13), end: h(20, 30), breakMinutes: 60 } },
     ]);
   });
 
@@ -121,7 +121,7 @@ describe('cobertura', () => {
     const r = computeCoverage(input({ employees, schedule, marks: [mark] }));
     expect(r.gaps).toEqual([]);
     expect(r.extraShifts).toEqual([
-      { employeeId: 'rosa', day: 2, shiftId: 'tarde', hours: { start: h(13), end: h(20, 30), breakMinutes: 60 } },
+      { employeeId: 'rosa', day: 2, shiftId: 'tarde', roleId: 'balconista', hours: { start: h(13), end: h(20, 30), breakMinutes: 60 } },
     ]);
   });
 
