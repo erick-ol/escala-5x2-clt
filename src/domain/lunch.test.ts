@@ -124,11 +124,14 @@ describe('planLunches', () => {
     expect(plan.a[0]).toBe(h(1) + 1440);
   });
 
-  it('planLunches com 30 pessoas × 21 dias em menos de 200ms', () => {
+  it('planLunches com 30 pessoas × 21 dias (todas com segunda área) em menos de 200ms', () => {
     const config = baseConfig();
     const roles = ['caixa', 'balconista'];
     const shifts = ['manha', 'tarde'];
-    const employees = Array.from({ length: 30 }, (_, i) => emp(`e${i}`, roles[i % 2], shifts[Math.floor(i / 2) % 2]));
+    // Pior caso: todo mundo com segunda área (cobertura de almoço minuto a minuto).
+    const employees = Array.from({ length: 30 }, (_, i) =>
+      emp(`e${i}`, roles[i % 2], shifts[Math.floor(i / 2) % 2], { secondaryRoleId: roles[(i + 1) % 2] }),
+    );
     const input: LunchInput = { config, employees, schedule: allWork(employees) };
     planLunches(input); // aquecimento
     const t0 = performance.now();
@@ -260,6 +263,86 @@ describe('regra break-late', () => {
     for (const e of input.employees) {
       const alerts = evaluateEmployee({ ...input, lunchPlan: plan }, e.id).alerts;
       expect(alerts.filter((a) => a.kind === 'break-late')).toEqual([]);
+    }
+  });
+});
+
+describe('cobertura de almoço pela segunda área', () => {
+  const morningTeam = () => [
+    emp('andreza', 'caixa', 'manha', { secondaryRoleId: 'balconista' }),
+    emp('richard', 'caixa', 'manha'),
+    emp('rosa', 'balconista', 'manha', { customHours: { start: h(5, 45), end: h(13, 30), breakMinutes: 60 } }),
+  ];
+  const onlyMorning = (): StoreConfig => ({
+    ...baseConfig(),
+    minimums: baseConfig().minimums.filter((m) => m.shiftId === 'manha'),
+  });
+
+  it('mercado do exemplo: Andreza cobre o almoço da Rosa quando Andreza e Richard trabalham de manhã', () => {
+    const input = exampleInput();
+    const plan = planLunches(input);
+    const gaps = findLunchGaps(input, plan);
+    const flexed = (id: string, d: number) => input.flex!.some((f) => f.employeeId === id && f.day === d);
+    let checked = 0;
+    for (let d = 0; d < CYCLE_DAYS; d++) {
+      const works = (id: string) => input.schedule[id][d].status === 'work' && !flexed(id, d);
+      if (!(works('andreza') && works('richard') && works('rosa'))) continue;
+      checked++;
+      const rosaLunch = plan.rosa[d]!;
+      expect(gaps.filter((g) => g.day === d && g.roleId === 'balconista' && g.from < rosaLunch + 60 && g.to > rosaLunch)).toEqual([]);
+      const andreza = presenceForDay(input, plan, d).find((b) => b.employeeId === 'andreza')!;
+      expect(andreza.lunchCovers).toEqual([{ from: rosaLunch, to: rosaLunch + 60, roleId: 'balconista', forEmployeeId: 'rosa' }]);
+    }
+    expect(checked).toBeGreaterThan(0);
+  });
+
+  it('sem cobertura quando a principal de quem cobriria ficaria abaixo do mínimo', () => {
+    const [andreza, , rosa] = morningTeam();
+    const employees = [andreza, rosa];
+    const input: LunchInput = { config: onlyMorning(), employees, schedule: allWork(employees) };
+    const plan = planLunches(input);
+    const lunch = plan.rosa[0]!;
+    expect(findLunchGaps(input, plan).filter((g) => g.day === 0 && g.roleId === 'balconista')).toEqual([
+      { day: 0, roleId: 'balconista', from: lunch, to: lunch + 60, missing: 1 },
+    ]);
+    expect(presenceForDay(input, plan, 0).find((b) => b.employeeId === 'andreza')!.lunchCovers).toBeUndefined();
+  });
+
+  it('o planejador não põe o almoço de quem cobre (nem do colega que garante a sobra) junto com o da Rosa', () => {
+    const employees = morningTeam();
+    const input: LunchInput = { config: onlyMorning(), employees, schedule: allWork(employees) };
+    const plan = planLunches(input);
+    for (let d = 0; d < CYCLE_DAYS; d++) {
+      const rosa = plan.rosa[d]!;
+      for (const id of ['andreza', 'richard']) {
+        const other = plan[id][d]!;
+        expect(other + 60 <= rosa || other >= rosa + 60).toBe(true);
+      }
+    }
+    expect(findLunchGaps(input, plan)).toEqual([]);
+  });
+
+  it('quem já está na segunda área no turno não cobre almoço', () => {
+    const employees = morningTeam();
+    const input: LunchInput = {
+      config: onlyMorning(),
+      employees,
+      schedule: allWork(employees),
+      flex: [{ day: 0, shiftId: 'manha', roleId: 'balconista', employeeId: 'andreza' }],
+    };
+    const plan = planLunches(input);
+    const blocks = presenceForDay(input, plan, 0);
+    expect(blocks.find((b) => b.employeeId === 'andreza')).toMatchObject({ roleId: 'balconista' });
+    expect(blocks.every((b) => b.lunchCovers === undefined)).toBe(true);
+  });
+
+  it('trechos do mesmo dia e função saem juntados, sem vizinhos', () => {
+    const input = exampleInput();
+    const gaps = findLunchGaps(input, planLunches(input));
+    for (let i = 1; i < gaps.length; i++) {
+      const a = gaps[i - 1];
+      const b = gaps[i];
+      if (a.day === b.day && a.roleId === b.roleId) expect(b.from).toBeGreaterThan(a.to);
     }
   });
 });

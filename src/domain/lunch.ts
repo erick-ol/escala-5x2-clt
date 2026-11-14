@@ -1,4 +1,4 @@
-import type { FlexCover } from './coverage';
+import { validSecondary, type FlexCover } from './coverage';
 import { MINUTES_PER_DAY, effectiveHours, effectiveShiftId, grossMinutes, weekdayOf } from './time';
 import {
   CYCLE_DAYS,
@@ -33,6 +33,20 @@ export interface PresenceBlock {
   breakEnd: Minutes | null;
   /** true quando o site escolheu o horário do almoço (sem `breakStart` informado). */
   breakPlanned: boolean;
+  /**
+   * Trechos em que esta pessoa cobre a segunda área durante o almoço de alguém (minuto a minuto).
+   * Só aparece quando há cobertura.
+   */
+  lunchCovers?: LunchCover[];
+}
+
+export interface LunchCover {
+  from: Minutes;
+  to: Minutes;
+  /** Função coberta (a segunda área de quem cobre). */
+  roleId: string;
+  /** Quem está almoçando (o primeiro da função em almoço naquele minuto, na ordem da equipe). */
+  forEmployeeId?: string;
 }
 
 export interface LunchGap {
@@ -86,22 +100,26 @@ interface Job {
   hours: WorkHours;
   start: Minutes;
   end: Minutes;
+  /** Segunda área, quando a pessoa pode cobrir almoços (conta na principal nesse dia). */
+  coverRoleId?: string;
 }
 
 interface Context {
   input: LunchInput;
   flexRole: Map<string, string>;
   extrasByDay: ExtraShift[][];
+  roleIds: ReadonlySet<string>;
 }
 
 function makeContext(input: LunchInput): Context {
+  const roleIds = new Set(input.config.roles.map((r) => r.id));
   const flexRole = new Map<string, string>();
   for (const f of input.flex ?? []) flexRole.set(`${f.day}|${f.shiftId}|${f.employeeId}`, f.roleId);
   const extrasByDay: ExtraShift[][] = Array.from({ length: CYCLE_DAYS }, () => []);
   for (const x of input.extraShifts ?? []) {
     if (Number.isInteger(x.day) && x.day >= 0 && x.day < CYCLE_DAYS) extrasByDay[x.day].push(x);
   }
-  return { input, flexRole, extrasByDay };
+  return { input, flexRole, extrasByDay, roleIds };
 }
 
 /** Jornadas do dia, na ordem da equipe; jornadas extras no fim, na ordem recebida. */
@@ -114,14 +132,18 @@ function jobsForDay(ctx: Context, day: DayIndex): Job[] {
     const hours = effectiveHours(config, e, cell);
     if (!hours) continue;
     const shiftId = effectiveShiftId(e, cell);
+    const roleId = ctx.flexRole.get(`${day}|${shiftId}|${e.id}`) ?? e.roleId;
+    // Quem já foi para a segunda área no turno não cobre almoço de mais ninguém.
+    const coverRoleId = roleId === e.roleId ? validSecondary(e, ctx.roleIds) : undefined;
     jobs.push({
       key: e.id,
       employeeId: e.id,
-      roleId: ctx.flexRole.get(`${day}|${shiftId}|${e.id}`) ?? e.roleId,
+      roleId,
       shiftId,
       hours,
       start: hours.start,
       end: hours.start + grossMinutes(hours),
+      ...(coverRoleId ? { coverRoleId } : {}),
     });
   }
   const byId = new Map(employees.map((e) => [e.id, e]));
@@ -159,12 +181,6 @@ function requiredByRole(config: StoreConfig, day: DayIndex): Map<string, Int16Ar
   return result;
 }
 
-function arrayFor(map: Map<string, Int16Array>, roleId: string): Int16Array {
-  let arr = map.get(roleId);
-  if (!arr) map.set(roleId, (arr = new Int16Array(SPAN)));
-  return arr;
-}
-
 function addRange(arr: Int16Array, from: number, to: number, delta: number): void {
   const lo = Math.max(0, from);
   const hi = Math.min(SPAN, to);
@@ -173,28 +189,166 @@ function addRange(arr: Int16Array, from: number, to: number, delta: number): voi
 
 const EMPTY = new Int16Array(SPAN);
 
+/** Quem pode cobrir almoço da segunda área, com o próprio almoço (lunchFrom = lunchTo = -1 se não há). */
+interface Cover {
+  index: number;
+  r1: number;
+  r2: number;
+  start: number;
+  end: number;
+  lunchFrom: number;
+  lunchTo: number;
+}
+
+interface Item {
+  roleId: string;
+  start: number;
+  end: number;
+  coverRoleId?: string;
+}
+
+/**
+ * Estado de um dia, por função (índices): mínimo, presentes e em almoço por minuto, e quem pode cobrir.
+ * A cobertura é minuto a minuto: num minuto t, quem está trabalhando (não almoçando), contando na
+ * principal com sobra, e tem a segunda área abaixo do mínimo passa a contar nela. Gulosa, na ordem da
+ * equipe; uma pessoa conta para uma função por vez; a principal nunca fica abaixo do mínimo.
+ */
+class DayState {
+  readonly idx = new Map<string, number>();
+  readonly roleIds: string[] = [];
+  readonly req: Int16Array[] = [];
+  readonly present: Int16Array[] = [];
+  readonly lunch: Int16Array[] = [];
+  readonly covers: Cover[] = [];
+  /** Contagem trabalhando por função no último minuto avaliado (depois das coberturas). */
+  readonly w: Int32Array;
+  /** Quem cobriu o quê no último minuto avaliado: índice do item → função coberta. */
+  readonly moved: [number, number][] = [];
+  /** Falta total por minuto com os almoços já marcados (sem ninguém extra), mantida em `setLunch`. */
+  readonly base = new Int32Array(SPAN);
+  private readonly from: number;
+  private readonly to: number;
+
+  constructor(config: StoreConfig, day: DayIndex, items: Item[]) {
+    const req = requiredByRole(config, day);
+    for (const r of config.roles) this.role(r.id);
+    for (const id of req.keys()) this.role(id);
+    items.forEach((it) => {
+      this.role(it.roleId);
+      if (it.coverRoleId) this.role(it.coverRoleId);
+    });
+    this.roleIds.forEach((id, i) => {
+      this.req[i] = req.get(id) ?? EMPTY;
+      this.present[i] = new Int16Array(SPAN);
+      this.lunch[i] = new Int16Array(SPAN);
+    });
+    items.forEach((it, index) => {
+      addRange(this.present[this.idx.get(it.roleId)!], it.start, it.end, 1);
+      if (it.coverRoleId) {
+        this.covers.push({
+          index,
+          r1: this.idx.get(it.roleId)!,
+          r2: this.idx.get(it.coverRoleId)!,
+          start: it.start,
+          end: it.end,
+          lunchFrom: -1,
+          lunchTo: -1,
+        });
+      }
+    });
+    this.w = new Int32Array(this.roleIds.length);
+    this.from = Math.max(0, Math.min(...items.map((it) => it.start)));
+    this.to = Math.min(SPAN, Math.max(...items.map((it) => it.end)));
+    this.refresh(this.from, this.to);
+  }
+
+  private refresh(from: number, to: number): void {
+    const lo = Math.max(from, this.from);
+    const hi = Math.min(to, this.to);
+    for (let t = lo; t < hi; t++) this.base[t] = this.evaluate(t);
+  }
+
+  private role(id: string): number {
+    let i = this.idx.get(id);
+    if (i === undefined) {
+      i = this.roleIds.length;
+      this.roleIds.push(id);
+      this.idx.set(id, i);
+    }
+    return i;
+  }
+
+  setLunch(index: number, roleId: string, from: number, to: number): void {
+    addRange(this.lunch[this.idx.get(roleId)!], from, to, 1);
+    const c = this.covers.find((x) => x.index === index);
+    if (c) {
+      c.lunchFrom = from;
+      c.lunchTo = to;
+    }
+    this.refresh(from, to);
+  }
+
+  /**
+   * Avalia o minuto t (preenche `w` e `moved`) e devolve a falta total (soma das funções).
+   * `extraRole`/`extraIndex`: alguém (ainda sem almoço marcado) almoçando também neste minuto.
+   */
+  evaluate(t: number, extraRole = -1, extraIndex = -1): number {
+    const { w, req } = this;
+    const n = this.roleIds.length;
+    for (let r = 0; r < n; r++) w[r] = this.present[r][t] - this.lunch[r][t];
+    if (extraRole >= 0) w[extraRole]--;
+    this.moved.length = 0;
+    // Ninguém abaixo do mínimo: ninguém precisa cobrir e não há falta.
+    let short = false;
+    for (let r = 0; r < n && !short; r++) short = w[r] < req[r][t];
+    if (!short) return 0;
+    for (const c of this.covers) {
+      if (t < c.start || t >= c.end || c.index === extraIndex) continue;
+      if (t >= c.lunchFrom && t < c.lunchTo) continue;
+      if (w[c.r1] > req[c.r1][t] && w[c.r2] < req[c.r2][t]) {
+        w[c.r1]--;
+        w[c.r2]++;
+        this.moved.push([c.index, c.r2]);
+      }
+    }
+    let missing = 0;
+    for (let r = 0; r < n; r++) if (w[r] < req[r][t]) missing += req[r][t] - w[r];
+    return missing;
+  }
+}
+
 /**
  * Escolhe o início do almoço de uma jornada sem horário informado: grade de 15min entre
- * entrada + 2h e entrada + 6h, terminando antes da saída. Critérios, em ordem: minutos em que a
- * função fica abaixo do mínimo; minutos de sobreposição com outros almoços da função; distância
- * do meio da jornada; o mais cedo.
+ * entrada + 2h e entrada + 6h, terminando antes da saída. Critérios, em ordem: falta que o almoço
+ * acrescenta (pessoa × minuto, já contando quem cobre pela segunda área, inclusive a própria pessoa
+ * deixando de cobrir); minutos de sobreposição com outros almoços da função; distância do meio da
+ * jornada; o mais cedo.
  */
-function chooseLunch(job: Job, req: Int16Array, present: Int16Array, lunch: Int16Array): Minutes {
+function chooseLunch(job: Job, index: number, state: DayState): Minutes {
   const b = job.hours.breakMinutes;
+  const role = state.idx.get(job.roleId)!;
+  const lunchArr = state.lunch[role];
   const first = Math.ceil((job.start + LUNCH_MIN_OFFSET) / GRID) * GRID;
   const last = Math.min(job.start + LUNCH_MAX_OFFSET, job.end - b - 1);
   const ideal = job.start + (job.end - job.start) / 2 - b / 2;
+  // Falta que este almoço acrescenta em cada minuto da janela possível (não depende do início escolhido).
+  const lo = Math.max(0, first);
+  const hi = Math.min(SPAN, last + b);
+  const added = new Int32Array(Math.max(0, hi - lo));
+  for (let t = lo; t < hi; t++) {
+    added[t - lo] = state.evaluate(t, role, index) - state.base[t];
+  }
   let best: Minutes | null = null;
   let bestScore: [number, number, number] = [Infinity, Infinity, Infinity];
   for (let s = first; s <= last; s += GRID) {
-    let short = 0;
+    let extra = 0;
     let overlap = 0;
-    const hi = Math.min(SPAN, s + b);
-    for (let t = s; t < hi; t++) {
-      if (req[t] > 0 && present[t] - lunch[t] - 1 < req[t]) short++;
-      overlap += lunch[t];
+    const end = Math.min(SPAN, s + b);
+    for (let t = s; t < end; t++) {
+      extra += added[t - lo];
+      overlap += lunchArr[t];
     }
-    const score: [number, number, number] = [short, overlap, Math.abs(s - ideal)];
+    const score: [number, number, number] = [extra, overlap, Math.abs(s - ideal)];
     if (
       score[0] < bestScore[0] ||
       (score[0] === bestScore[0] && (score[1] < bestScore[1] || (score[1] === bestScore[1] && score[2] < bestScore[2])))
@@ -216,37 +370,35 @@ export function planLunches(input: LunchInput): LunchPlan {
   for (let day = 0; day < CYCLE_DAYS; day++) {
     const jobs = jobsForDay(ctx, day);
     if (jobs.length === 0) continue;
-    const req = requiredByRole(input.config, day);
-    const present = new Map<string, Int16Array>();
-    const lunch = new Map<string, Int16Array>();
-    for (const j of jobs) addRange(arrayFor(present, j.roleId), j.start, j.end, 1);
+    const state = new DayState(input.config, day, jobs);
 
     // Almoços informados primeiro: os planejados se ajustam a eles.
-    const planned: Job[] = [];
-    for (const j of jobs) {
-      if (j.hours.breakMinutes <= 0) continue;
+    const planned: number[] = [];
+    jobs.forEach((j, i) => {
+      if (j.hours.breakMinutes <= 0) return;
       const explicit = explicitLunchStart(j.hours);
       if (explicit === null) {
-        planned.push(j);
-        continue;
+        planned.push(i);
+        return;
       }
       row(j.key)[day] = explicit;
-      addRange(arrayFor(lunch, j.roleId), explicit, explicit + j.hours.breakMinutes, 1);
-    }
+      state.setLunch(i, j.roleId, explicit, explicit + j.hours.breakMinutes);
+    });
     // Ordem estável: entrada, saída, ordem da equipe (sort é estável).
-    planned.sort((a, b) => a.start - b.start || a.end - b.end);
-    for (const j of planned) {
-      const lunchArr = arrayFor(lunch, j.roleId);
-      const s = chooseLunch(j, req.get(j.roleId) ?? EMPTY, arrayFor(present, j.roleId), lunchArr);
+    planned.sort((a, b) => jobs[a].start - jobs[b].start || jobs[a].end - jobs[b].end);
+    for (const i of planned) {
+      const j = jobs[i];
+      const s = chooseLunch(j, i, state);
       row(j.key)[day] = s;
-      addRange(lunchArr, s, s + j.hours.breakMinutes, 1);
+      state.setLunch(i, j.roleId, s, s + j.hours.breakMinutes);
     }
   }
   return plan;
 }
 
-function blocksFor(ctx: Context, plan: LunchPlan, day: DayIndex): PresenceBlock[] {
-  return jobsForDay(ctx, day).map((j) => {
+function blocksFor(ctx: Context, plan: LunchPlan, day: DayIndex): { blocks: PresenceBlock[]; jobs: Job[] } {
+  const jobs = jobsForDay(ctx, day);
+  const blocks = jobs.map((j): PresenceBlock => {
     const b = j.hours.breakMinutes;
     const explicit = explicitLunchStart(j.hours);
     const breakStart = b > 0 ? (explicit ?? plan[j.key]?.[day] ?? null) : null;
@@ -262,56 +414,95 @@ function blocksFor(ctx: Context, plan: LunchPlan, day: DayIndex): PresenceBlock[
       breakPlanned: breakStart !== null && explicit === null,
     };
   });
+  return { blocks, jobs };
 }
 
-/** Quem trabalha no dia, com a função contada e o almoço (informado ou do plano). */
+/** Estado do dia com os almoços dos blocos já marcados. */
+function stateFor(config: StoreConfig, day: DayIndex, jobs: Job[], blocks: PresenceBlock[]): DayState {
+  const state = new DayState(config, day, jobs);
+  blocks.forEach((bl, i) => {
+    if (bl.breakStart !== null && bl.breakEnd !== null) state.setLunch(i, bl.roleId, bl.breakStart, bl.breakEnd);
+  });
+  return state;
+}
+
+/** Quem trabalha no dia, com a função contada, o almoço (informado ou do plano) e quem cobre almoços. */
 export function presenceForDay(input: LunchInput, plan: LunchPlan, day: DayIndex): PresenceBlock[] {
-  return blocksFor(makeContext(input), plan, day);
-}
-
-/**
- * Trechos em que uma função fica abaixo do mínimo SÓ por causa de almoços (contando quem está
- * almoçando, o mínimo seria atendido). Fora das janelas dos turnos com mínimo, nada é conferido.
- */
-export function findLunchGaps(input: LunchInput, plan: LunchPlan): LunchGap[] {
-  const ctx = makeContext(input);
-  const roleOrder = new Map(input.config.roles.map((r, i) => [r.id, i]));
-  const gaps: LunchGap[] = [];
-  for (let day = 0; day < CYCLE_DAYS; day++) {
-    const blocks = blocksFor(ctx, plan, day);
-    if (blocks.length === 0) continue;
-    const req = requiredByRole(input.config, day);
-    const present = new Map<string, Int16Array>();
-    const lunch = new Map<string, Int16Array>();
-    for (const bl of blocks) {
-      addRange(arrayFor(present, bl.roleId), bl.start, bl.end, 1);
-      if (bl.breakStart !== null && bl.breakEnd !== null) {
-        addRange(arrayFor(lunch, bl.roleId), bl.breakStart, bl.breakEnd, 1);
-      }
-    }
-    const roles = [...req.keys()].sort((a, b) => (roleOrder.get(a) ?? Infinity) - (roleOrder.get(b) ?? Infinity));
-    for (const roleId of roles) {
-      const r = req.get(roleId)!;
-      const p = present.get(roleId) ?? EMPTY;
-      const l = lunch.get(roleId) ?? EMPTY;
-      let open: LunchGap | null = null;
-      for (let t = 0; t <= SPAN; t++) {
-        const working = t < SPAN ? p[t] - l[t] : 0;
-        const caused = t < SPAN && r[t] > 0 && working < r[t] && p[t] >= r[t];
-        if (caused) {
-          const missing = r[t] - working;
-          if (open) {
-            open.to = t + 1;
-            open.missing = Math.max(open.missing, missing);
-          } else {
-            open = { day, roleId, from: t, to: t + 1, missing };
-          }
-        } else if (open) {
-          gaps.push(open);
-          open = null;
-        }
+  const { blocks, jobs } = blocksFor(makeContext(input), plan, day);
+  if (!jobs.some((j) => j.coverRoleId)) return blocks;
+  const state = stateFor(input.config, day, jobs, blocks);
+  for (let t = 0; t < SPAN; t++) {
+    state.evaluate(t);
+    for (const [index, r2] of state.moved) {
+      const roleId = state.roleIds[r2];
+      // Só registra a cobertura durante o almoço de alguém da função coberta.
+      const lunching = blocks.find((bl) => bl.roleId === roleId && bl.breakStart !== null && t >= bl.breakStart && t < bl.breakEnd!);
+      if (!lunching) continue;
+      const covers = (blocks[index].lunchCovers ??= []);
+      const lastCover = covers[covers.length - 1];
+      if (lastCover && lastCover.to === t && lastCover.roleId === roleId && lastCover.forEmployeeId === lunching.employeeId) {
+        lastCover.to = t + 1;
+      } else {
+        covers.push({ from: t, to: t + 1, roleId, forEmployeeId: lunching.employeeId });
       }
     }
   }
+  return blocks;
+}
+
+/**
+ * Trechos em que uma função fica abaixo do mínimo SÓ por causa de almoços: contando quem está
+ * almoçando, o mínimo seria atendido; já contando quem cobre pela segunda área (minuto a minuto),
+ * não é. Fora das janelas dos turnos com mínimo, nada é conferido. Trechos vizinhos ou sobrepostos
+ * do mesmo dia e função são juntados.
+ */
+export function findLunchGaps(input: LunchInput, plan: LunchPlan): LunchGap[] {
+  const ctx = makeContext(input);
+  const gaps: LunchGap[] = [];
+  for (let day = 0; day < CYCLE_DAYS; day++) {
+    const { blocks, jobs } = blocksFor(ctx, plan, day);
+    if (blocks.length === 0) continue;
+    const state = stateFor(input.config, day, jobs, blocks);
+    const n = state.roleIds.length;
+    const open: (LunchGap | null)[] = Array.from({ length: n }, () => null);
+    const dayGaps: LunchGap[][] = Array.from({ length: n }, () => []);
+    for (let t = 0; t <= SPAN; t++) {
+      if (t < SPAN) state.evaluate(t);
+      for (let r = 0; r < n; r++) {
+        const need = t < SPAN ? state.req[r][t] : 0;
+        const working = state.w[r];
+        const caused = need > 0 && working < need && state.present[r][t] >= need;
+        const g = open[r];
+        if (caused) {
+          if (g && g.to >= t) {
+            g.to = t + 1;
+            g.missing = Math.max(g.missing, need - working);
+          } else {
+            open[r] = { day, roleId: state.roleIds[r], from: t, to: t + 1, missing: need - working };
+          }
+        } else if (g) {
+          dayGaps[r].push(g);
+          open[r] = null;
+        }
+      }
+    }
+    for (const list of dayGaps) gaps.push(...mergeGaps(list));
+  }
   return gaps;
+}
+
+/** Junta trechos vizinhos ou sobrepostos (mesmo dia e função), ordenados pelo início. */
+function mergeGaps(list: LunchGap[]): LunchGap[] {
+  const sorted = [...list].sort((a, b) => a.from - b.from);
+  const out: LunchGap[] = [];
+  for (const g of sorted) {
+    const last = out[out.length - 1];
+    if (last && g.from <= last.to) {
+      last.to = Math.max(last.to, g.to);
+      last.missing = Math.max(last.missing, g.missing);
+    } else {
+      out.push({ ...g });
+    }
+  }
+  return out;
 }
