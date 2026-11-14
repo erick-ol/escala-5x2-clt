@@ -50,6 +50,11 @@ export interface StoreDay {
    * Os turnos cadastrados não valem; o mínimo de cada função é o maior entre os turnos.
    */
   singleShift?: boolean;
+  /**
+   * Sem folga: o gerador não põe folga de ninguém nesse dia (ex.: sábado, dia de movimento).
+   * Não vale para o domingo: a lei exige folga em alguns domingos.
+   */
+  noOff?: boolean;
 }
 
 export interface Shift extends WorkHours {

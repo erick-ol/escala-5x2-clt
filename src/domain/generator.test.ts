@@ -354,3 +354,46 @@ describe('fitEmployee', () => {
     expect(forbiddenAlerts(config, [...employees, novo], fitted)).toEqual([]);
   });
 });
+
+describe('dia sem folga', () => {
+  const SATURDAY = 5;
+  for (const offPattern of ['together', 'flexible'] as const) {
+    it(`sábado sem folga (${offPattern}): ninguém folga no sábado, 2 descansos por semana e nenhum alerta legal`, () => {
+      const base = example(offPattern);
+      const config: StoreConfig = {
+        ...base.config,
+        days: base.config.days.map((d, w) => (w === SATURDAY ? { ...d, noOff: true } : d)),
+      };
+      const schedule = generateSchedule({ config, employees: base.employees });
+      for (const e of base.employees) {
+        const row = schedule[e.id];
+        for (let w = 0; w < WEEKS; w++) {
+          expect(row[dayOfWeekday(w, SATURDAY)].status).toBe('work');
+          const rest = row.slice(w * DAYS_PER_WEEK, (w + 1) * DAYS_PER_WEEK).filter((c) => c.status !== 'work').length;
+          expect(rest).toBe(2);
+        }
+      }
+      const alerts = Object.values(evaluateRules({ config, employees: base.employees, schedule })).flatMap((r) => r.alerts);
+      expect(alerts.map((a) => a.message)).toEqual([]);
+    });
+  }
+
+  it('"sem folga" no domingo é ignorado: o rodízio de domingo continua', () => {
+    const base = example();
+    const config: StoreConfig = { ...base.config, days: base.config.days.map((d, w) => (w === SUNDAY ? { ...d, noOff: true } : d)) };
+    const schedule = generateSchedule({ config, employees: base.employees });
+    for (const e of base.employees) {
+      const sundaysOff = Array.from({ length: WEEKS }, (_, w) => schedule[e.id][dayOfWeekday(w, SUNDAY)].status === 'off');
+      expect(sundaysOff.some(Boolean)).toBe(true);
+    }
+  });
+
+  it('pessoa nova encaixada também não folga no dia sem folga', () => {
+    const base = example();
+    const config: StoreConfig = { ...base.config, days: base.config.days.map((d, w) => (w === SATURDAY ? { ...d, noOff: true } : d)) };
+    const schedule = generateSchedule({ config, employees: base.employees });
+    const novo: Employee = { id: 'novo', name: 'Novo', roleId: 'caixa', shiftId: 'tarde', isWoman: false };
+    const row = fitEmployee({ config, employees: [...base.employees, novo], schedule }, 'novo');
+    for (let w = 0; w < WEEKS; w++) expect(row[dayOfWeekday(w, SATURDAY)].status).toBe('work');
+  });
+});

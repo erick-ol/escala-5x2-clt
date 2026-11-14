@@ -6,6 +6,7 @@ import { TimeInput } from './TimeInput';
 
 /** Índice de segunda-feira em `config.days`. */
 const MONDAY: Weekday = 0;
+const SUNDAY: Weekday = 6;
 
 export function StoreHoursStep() {
   const config = useAppStore((s) => s.document.config);
@@ -17,7 +18,7 @@ export function StoreHoursStep() {
 
   /**
    * Copia aberto/abre/fecha de segunda (o dia típico; a lista começa no domingo, que costuma ser diferente);
-   * o "turno único" de cada dia fica como está.
+   * o "turno único" e o "sem folga" de cada dia ficam como estão.
    */
   const copyToAll = () => {
     const { open, opensAt, closesAt } = config.days[MONDAY];
@@ -53,7 +54,9 @@ export function StoreHoursStep() {
       </div>
 
       <p className="hint">
-        <b>Turno único:</b> todos trabalham no horário da loja nesse dia (ex.: domingo de manhã).
+        <b>Turno único:</b> todos trabalham no horário da loja nesse dia (ex.: domingo de manhã).{' '}
+        <b>Sem folga:</b> ninguém folga nesse dia (ex.: sábado, dia de movimento). O domingo não tem essa opção: a
+        lei exige folga em alguns domingos.
       </p>
       <div className="setup-days" role="group" aria-label="Horário por dia da semana">
         <div className="setup-days-head" aria-hidden="true">
@@ -80,15 +83,28 @@ export function StoreHoursStep() {
                     invalid={invalid}
                     onChange={(v) => setDay(i, { closesAt: v })}
                   />
-                  <label className="checkbox setup-day-single">
-                    <input
-                      type="checkbox"
-                      checked={!!day.singleShift}
-                      aria-label={`${name}: turno único`}
-                      onChange={(e) => setDay(i, { singleShift: e.target.checked })}
-                    />
-                    <span aria-hidden="true">Turno único</span>
-                  </label>
+                  <div className="setup-day-flags">
+                    <label className="checkbox setup-day-single">
+                      <input
+                        type="checkbox"
+                        checked={!!day.singleShift}
+                        aria-label={`${name}: turno único`}
+                        onChange={(e) => setDay(i, { singleShift: e.target.checked })}
+                      />
+                      <span aria-hidden="true">Turno único</span>
+                    </label>
+                    {i !== SUNDAY && (
+                      <label className="checkbox setup-day-single">
+                        <input
+                          type="checkbox"
+                          checked={!!day.noOff}
+                          aria-label={`${name}: sem folga`}
+                          onChange={(e) => setDay(i, { noOff: e.target.checked })}
+                        />
+                        <span aria-hidden="true">Sem folga</span>
+                      </label>
+                    )}
+                  </div>
                 </>
               ) : (
                 <span className="setup-day-closed hint">Fechado</span>
@@ -102,7 +118,7 @@ export function StoreHoursStep() {
         <button type="button" className="btn" onClick={copyToAll}>
           Copiar para todos os dias
         </button>
-        <span className="hint">Usa o horário de segunda (o turno único de cada dia não muda).</span>
+        <span className="hint">Usa o horário de segunda (o turno único e o "sem folga" de cada dia não mudam).</span>
       </div>
     </section>
   );

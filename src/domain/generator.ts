@@ -1,6 +1,7 @@
 import { INTERSHIFT_REST_MINUTES } from './legal';
 import {
   MINUTES_PER_DAY,
+  allowsOff,
   effectiveHours,
   effectiveShiftId,
   grossMinutes,
@@ -60,6 +61,8 @@ const STREAK_PENALTY = 1;
  */
 class Solver {
   readonly open: boolean[];
+  /** Dias em que o gerador pode pôr folga (aberto e sem "sem folga"). */
+  readonly offAllowed: boolean[];
   readonly sundayOpen: boolean;
   /** Folgas a atribuir por semana (KTD14): 2 menos os dias de loja fechada. */
   readonly offsPerWeek: number;
@@ -98,6 +101,7 @@ class Solver {
     fixed: (Cell[] | null)[],
   ) {
     this.open = Array.from({ length: CYCLE_DAYS }, (_, d) => !!config.days[weekdayOf(d)]?.open);
+    this.offAllowed = Array.from({ length: CYCLE_DAYS }, (_, d) => allowsOff(config, weekdayOf(d)));
     this.sundayOpen = !!config.days[SUNDAY]?.open;
     this.together = config.offPattern !== 'flexible';
     let closedPerWeek = 0;
@@ -304,7 +308,7 @@ class Solver {
           let bestDay = -1;
           let bestScore: number[] = [];
           for (let d = w * DAYS_PER_WEEK; d < (w + 1) * DAYS_PER_WEEK; d++) {
-            if (!this.open[d] || this.off[k][d]) continue;
+            if (!this.offAllowed[d] || this.off[k][d]) continue;
             const adjacent = Number(this.isRest(k, d - 1)) + Number(this.isRest(k, d + 1));
             const gap = this.toggleDelta(k, d);
             this.setOff(k, d, true);
@@ -344,8 +348,8 @@ class Solver {
           const now: number[] = [];
           for (let d = w * DAYS_PER_WEEK; d < (w + 1) * DAYS_PER_WEEK; d++) {
             if (!this.open[d]) continue;
-            days.push(d);
             if (this.off[k][d]) now.push(d);
+            if (this.offAllowed[d]) days.push(d);
           }
           current.push(now);
           options.push(

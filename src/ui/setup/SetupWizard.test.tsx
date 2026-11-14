@@ -110,7 +110,7 @@ describe('SetupWizard', () => {
     const names = within(screen.getByRole('group', { name: 'Horário por dia da semana' }))
       .getAllByRole('checkbox')
       .map((c) => c.closest('label')?.textContent)
-      .filter((t) => t && !t.includes('Turno único'));
+      .filter((t) => t && !t.includes('Turno único') && !t.includes('Sem folga'));
     expect(names).toEqual(['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']);
     expect(screen.getByText(/Usa o horário de segunda/)).toBeInTheDocument();
   });
@@ -208,6 +208,22 @@ describe('SetupWizard', () => {
     expect(manha).not.toBeDisabled();
     fireEvent.change(manha, { target: { value: '3' } });
     expect(doc().config.minimums.find((x) => x.roleId === 'balconista' && x.shiftId === 'manha')?.perWeekday).toEqual([3, 3, 3, 3, 3, 3, 2]);
+  });
+
+  test('"Sem folga" no sábado é salvo; domingo não tem a opção; dias demais sem folga dão erro', async () => {
+    const user = userEvent.setup();
+    seedThroughRoles();
+    render(<SetupWizard onFinish={() => {}} initialStep={0} />);
+
+    expect(screen.queryByLabelText('Domingo: sem folga')).not.toBeInTheDocument();
+    await user.click(screen.getByLabelText('Sábado: sem folga'));
+    expect(doc().config.days[5].noOff).toBe(true);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+    // Segunda a sábado sem folga: sobra só o domingo para 2 folgas por semana.
+    for (const name of ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta']) await user.click(screen.getByLabelText(`${name}: sem folga`));
+    await user.click(screen.getByRole('button', { name: 'Próximo' }));
+    expect(screen.getByRole('alert')).toHaveTextContent('deixe pelo menos 2 dias abertos sem a marca "Sem folga"');
   });
 
   test('avançar sem nenhum funcionário mostra erro na etapa de equipe', async () => {

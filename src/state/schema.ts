@@ -16,6 +16,7 @@ const storeDay = z.object({
   opensAt: minutes,
   closesAt: minutes,
   singleShift: z.boolean().default(false),
+  noOff: z.boolean().optional(),
 });
 
 const shift = workHours.extend({ id: z.string().min(1), name: z.string() });

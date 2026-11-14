@@ -105,6 +105,12 @@ export function isVirtualShiftId(shiftId: string): boolean {
   return /^__dia[0-6]$/.test(shiftId);
 }
 
+/** O gerador pode pôr folga nesse dia da semana? (aberto e sem "sem folga"; no domingo sempre pode). */
+export function allowsOff(config: StoreConfig, weekday: Weekday): boolean {
+  const d = config.days[weekday];
+  return !!d?.open && (weekday === 6 || !d.noOff);
+}
+
 /** Dia da semana aberto e marcado como "turno único": todos trabalham no horário da loja. */
 export function isSingleShiftDay(config: StoreConfig, weekday: Weekday): boolean {
   const d = config.days[weekday];

@@ -1,5 +1,5 @@
 import { DAILY_LIMIT_MINUTES } from '../../domain/legal';
-import { defaultBreakFor, isValidHours } from '../../domain/time';
+import { allowsOff, defaultBreakFor, isValidHours } from '../../domain/time';
 import { WEEKDAY_NAMES, WEEK_ORDER, type AppDocument, type Minimum, type Regime, type Shift, type StoreConfig, type StoreDay } from '../../domain/types';
 
 /** Gera um id legível e único a partir de um nome ("Manhã" → "manha", "manha-2"...). */
@@ -95,6 +95,12 @@ export function validateStoreHours(config: StoreConfig): string | null {
     if (d?.open && d.closesAt <= d.opensAt) {
       return `${WEEKDAY_NAMES[i]}: o fechamento precisa ser depois da abertura.`;
     }
+  }
+  // Cada semana precisa de 2 dias de descanso: os fechados contam; o resto tem que caber nos dias com folga.
+  const closed = config.days.filter((d) => !d.open).length;
+  const withOff = WEEK_ORDER.filter((w) => allowsOff(config, w)).length;
+  if (withOff < 2 - closed) {
+    return 'Sobram poucos dias para as folgas: deixe pelo menos 2 dias abertos sem a marca "Sem folga".';
   }
   return null;
 }
