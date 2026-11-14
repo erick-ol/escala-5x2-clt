@@ -112,6 +112,20 @@ describe('ExportPanel', () => {
     expect(weekImage()).toHaveTextContent('Dono/família');
   });
 
+  it('turno único: domingo sai como "U" com o horário da loja e a legenda explica', async () => {
+    await renderReady();
+    const sheet = printSheet();
+    const legend = sheet.querySelector('.ps-legend')!;
+    expect(legend).toHaveTextContent('U = Turno único Dom 07:00–13:00');
+    const doc = appStore.getState().document;
+    const worker = doc.employees.find((e) => doc.schedule![e.id][6].status === 'work')!;
+    const row = within(sheet).getAllByTestId('print-row').find((r) => r.textContent?.includes(worker.name))!;
+    const sunday = row.querySelectorAll('td')[6];
+    expect(sunday).toHaveTextContent('U');
+    expect(sunday).toHaveTextContent('07:00–13:00');
+    expect(weekImage()).toHaveTextContent('Turno único');
+  });
+
   it('imagem tem cabeçalho com loja e semana, e troca de semana gera outra imagem', async () => {
     await renderReady();
     expect(weekImage()).toHaveTextContent('Mercado do exemplo');

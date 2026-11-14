@@ -10,7 +10,12 @@ const workHours = z.object({
   breakStart: minutes.optional(),
 });
 
-const storeDay = z.object({ open: z.boolean(), opensAt: minutes, closesAt: minutes });
+const storeDay = z.object({
+  open: z.boolean(),
+  opensAt: minutes,
+  closesAt: minutes,
+  singleShift: z.boolean().default(false),
+});
 
 const shift = workHours.extend({ id: z.string().min(1), name: z.string() });
 const role = z.object({ id: z.string().min(1), name: z.string() });

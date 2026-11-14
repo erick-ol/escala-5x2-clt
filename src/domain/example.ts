@@ -4,15 +4,20 @@ import { SCHEMA_VERSION } from './types';
 
 const h = (hh: number, mm = 0) => hh * 60 + mm;
 
-const openDay: StoreDay = { open: true, opensAt: h(6, 30), closesAt: h(20, 30) };
+const openDay: StoreDay = { open: true, opensAt: h(6, 30), closesAt: h(20, 30), singleShift: false };
+/** Domingo só de manhã, com turno único: todos entram juntos. */
+const sunday: StoreDay = { open: true, opensAt: h(7), closesAt: h(13), singleShift: true };
 
-/** Exemplo pré-carregado (R7): mercado com 6 funcionários, caixa e balcão, manhã e tarde, aberto 7 dias. */
+/**
+ * Exemplo pré-carregado (R7): mercado com 6 funcionários, caixa e balcão, manhã e tarde, aberto 7 dias.
+ * Domingo abre só de manhã (07:00–13:00) com turno único.
+ */
 export function exampleDocument(today: Date = new Date()): AppDocument {
   return {
     schemaVersion: SCHEMA_VERSION,
     config: {
       name: 'Mercado do exemplo',
-      days: Array.from({ length: 7 }, () => ({ ...openDay })),
+      days: Array.from({ length: 7 }, (_, w) => ({ ...(w === 6 ? sunday : openDay) })),
       shifts: [
         { id: 'manha', name: 'Manhã', start: h(6, 30), end: h(14), breakMinutes: 60 },
         { id: 'tarde', name: 'Tarde', start: h(13), end: h(20, 30), breakMinutes: 60 },
@@ -63,7 +68,7 @@ export function emptyDocument(today: Date = new Date()): AppDocument {
     schemaVersion: SCHEMA_VERSION,
     config: {
       name: '',
-      days: Array.from({ length: 7 }, () => ({ open: true, opensAt: h(8), closesAt: h(18) })),
+      days: Array.from({ length: 7 }, () => ({ open: true, opensAt: h(8), closesAt: h(18), singleShift: false })),
       shifts: [],
       roles: [],
       minimums: [],

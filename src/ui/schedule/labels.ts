@@ -1,5 +1,5 @@
 import type { LegalAlert } from '../../domain/rules';
-import { weekOf, weekdayOf } from '../../domain/time';
+import { SINGLE_SHIFT_NAME, isVirtualShiftId, weekOf, weekdayOf } from '../../domain/time';
 import { WEEKDAY_NAMES, type Employee, type StoreConfig } from '../../domain/types';
 
 const TONES = ['a', 'b', 'c'] as const;
@@ -11,12 +11,17 @@ export function shiftTone(config: StoreConfig, shiftId: string): ShiftTone {
   return TONES[(i < 0 ? 0 : i) % TONES.length];
 }
 
+/** Letra do turno único na grade e na exportação. */
+export const SINGLE_SHIFT_INITIAL = 'U';
+
 export function shiftInitial(config: StoreConfig, shiftId: string): string {
+  if (isVirtualShiftId(shiftId)) return SINGLE_SHIFT_INITIAL;
   const name = config.shifts.find((s) => s.id === shiftId)?.name.trim() ?? '?';
   return name.charAt(0).toUpperCase() || '?';
 }
 
 export function shiftName(config: StoreConfig, shiftId: string): string {
+  if (isVirtualShiftId(shiftId)) return SINGLE_SHIFT_NAME;
   return config.shifts.find((s) => s.id === shiftId)?.name ?? 'turno removido';
 }
 

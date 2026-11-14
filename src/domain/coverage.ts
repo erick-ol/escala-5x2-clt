@@ -1,4 +1,4 @@
-import { effectiveShiftId, shiftHours, weekdayOf } from './time';
+import { dayShifts, effectiveShiftId, findShift, isVirtualShiftId, requiredCount, shiftHours, weekdayOf } from './time';
 import {
   CYCLE_DAYS,
   WEEKDAY_NAMES,
@@ -69,12 +69,7 @@ export function gapKey(g: Pick<Gap, 'day' | 'shiftId' | 'roleId' | 'slot'>): str
 const cellKey = (day: DayIndex, shiftId: string, roleId: string) => `${day}|${shiftId}|${roleId}`;
 
 /** Mínimo exigido por dia/turno/função (0 se a loja está fechada ou não há mínimo). */
-function requiredFor(config: StoreConfig, day: DayIndex, shiftId: string, roleId: string): number {
-  const wd = weekdayOf(day);
-  if (!config.days[wd]?.open) return 0;
-  const min = config.minimums.find((m) => m.shiftId === shiftId && m.roleId === roleId);
-  return Math.max(0, min?.perWeekday[wd] ?? 0);
-}
+const requiredFor = requiredCount;
 
 /** Segunda área válida: função existente e diferente da principal. */
 export function validSecondary(e: Employee, roleIds: ReadonlySet<string>): string | undefined {
@@ -108,7 +103,7 @@ function countWithFlex(config: StoreConfig, employees: Employee[], schedule: Sch
     for (let d = 0; d < CYCLE_DAYS; d++) {
       const cell = row[d];
       if (cell?.status !== 'work') continue;
-      const shiftId = effectiveShiftId(e, cell);
+      const shiftId = effectiveShiftId(config, e, cell, d);
       const k = cellKey(d, shiftId, e.roleId);
       counts.set(k, (counts.get(k) ?? 0) + 1);
       if (secondary) {
@@ -124,7 +119,7 @@ function countWithFlex(config: StoreConfig, employees: Employee[], schedule: Sch
   const flexRole = new Map<string, string>();
   if (flexible.size === 0) return { counts, flexRole, flex };
   for (let d = 0; d < CYCLE_DAYS; d++) {
-    for (const shift of config.shifts) {
+    for (const shift of dayShifts(config, weekdayOf(d))) {
       const candidates = flexible.get(`${d}|${shift.id}`);
       if (!candidates) continue;
       for (const role of config.roles) {
@@ -151,7 +146,7 @@ export function countGaps(config: StoreConfig, employees: Employee[], schedule: 
   const { counts } = countWithFlex(config, employees, schedule);
   let total = 0;
   for (let d = 0; d < CYCLE_DAYS; d++) {
-    for (const shift of config.shifts) {
+    for (const shift of dayShifts(config, weekdayOf(d))) {
       for (const role of config.roles) {
         const required = requiredFor(config, d, shift.id, role.id);
         if (required > 0) total += Math.max(0, required - (counts.get(cellKey(d, shift.id, role.id)) ?? 0));
@@ -164,16 +159,15 @@ export function countGaps(config: StoreConfig, employees: Employee[], schedule: 
 export function computeCoverage({ config, employees, schedule, marks }: CoverageInput): CoverageResult {
   const { counts, flexRole, flex } = countWithFlex(config, employees, schedule);
   const byId = new Map(employees.map((e) => [e.id, e]));
-  const shiftById = new Map(config.shifts.map((s) => [s.id, s]));
   const roleIds = new Set(config.roles.map((r) => r.id));
 
   const targetValid = (m: CoverageMark) =>
     Number.isInteger(m.day) &&
     m.day >= 0 &&
     m.day < CYCLE_DAYS &&
-    shiftById.has(m.shiftId) &&
     roleIds.has(m.roleId) &&
-    !!config.days[weekdayOf(m.day)]?.open;
+    !!config.days[weekdayOf(m.day)]?.open &&
+    dayShifts(config, weekdayOf(m.day)).some((s) => s.id === m.shiftId);
 
   // Passo 1 (uma vez só, sem recursão): quem já trabalha no mesmo turno e cobre outra vaga
   // sai da contagem da função em que estava contando naquele dia (KTD16): a principal ou, se foi
@@ -183,7 +177,7 @@ export function computeCoverage({ config, employees, schedule, marks }: Coverage
     const e = byId.get(m.coveredBy.employeeId);
     if (!e) continue;
     const cell = schedule[e.id]?.[m.day];
-    if (cell?.status === 'work' && effectiveShiftId(e, cell) === m.shiftId) {
+    if (cell?.status === 'work' && effectiveShiftId(config, e, cell, m.day) === m.shiftId) {
       const k = cellKey(m.day, m.shiftId, flexRole.get(`${m.day}|${m.shiftId}|${e.id}`) ?? e.roleId);
       counts.set(k, Math.max(0, (counts.get(k) ?? 0) - 1));
     }
@@ -193,7 +187,7 @@ export function computeCoverage({ config, employees, schedule, marks }: Coverage
   const missingSlots: Gap[] = [];
   const missingByCell = new Map<string, number>();
   for (let d = 0; d < CYCLE_DAYS; d++) {
-    for (const shift of config.shifts) {
+    for (const shift of dayShifts(config, weekdayOf(d))) {
       for (const role of config.roles) {
         const required = requiredFor(config, d, shift.id, role.id);
         if (required === 0) continue;
@@ -228,9 +222,9 @@ export function computeCoverage({ config, employees, schedule, marks }: Coverage
     coveredByKey.set(key, m);
     if (coverer) {
       const cell = schedule[coverer.id]?.[m.day];
-      const sameShift = cell?.status === 'work' && effectiveShiftId(coverer, cell) === m.shiftId;
+      const sameShift = cell?.status === 'work' && effectiveShiftId(config, coverer, cell, m.day) === m.shiftId;
       if (!sameShift) {
-        const shift = shiftById.get(m.shiftId)!;
+        const shift = findShift(config, m.shiftId)!;
         extraShifts.push({
           employeeId: coverer.id,
           day: m.day,
@@ -254,11 +248,12 @@ export function computeCoverage({ config, employees, schedule, marks }: Coverage
   return { gaps, covered, orphanMarks, extraShifts, flex, summary, headline: buildHeadline(summary) };
 }
 
-/** "à tarde", "de manhã", "à noite"; outros nomes viram "no turno X". */
+/** "à tarde", "de manhã", "à noite", "no turno único"; outros nomes viram "no turno X". */
 export function shiftPhrase(name: string): string {
   const n = name.trim().toLowerCase();
   if (n === 'manhã' || n === 'manha' || n === 'madrugada') return `de ${n === 'manha' ? 'manhã' : n}`;
   if (n === 'tarde' || n === 'noite') return `à ${n}`;
+  if (n === 'turno único') return 'no turno único';
   return `no turno ${name.trim()}`;
 }
 
@@ -274,14 +269,18 @@ export function weekdaysPhrase(weekdays: Weekday[]): string {
 
 function buildSummary(config: StoreConfig, gaps: Gap[]): SummaryItem[] {
   const items: SummaryItem[] = [];
-  for (const shift of config.shifts) {
+  // Turnos cadastrados primeiro; depois os turnos únicos (um por dia da semana).
+  const shiftIds = [...config.shifts.map((s) => s.id), ...new Set(gaps.map((g) => g.shiftId).filter(isVirtualShiftId))];
+  for (const shiftId of new Set(shiftIds)) {
+    const shift = findShift(config, shiftId);
+    if (!shift) continue;
     for (const role of config.roles) {
-      const group = gaps.filter((g) => g.shiftId === shift.id && g.roleId === role.id);
+      const group = gaps.filter((g) => g.shiftId === shiftId && g.roleId === role.id);
       if (group.length === 0) continue;
       const weekdays = [...new Set(group.map((g) => weekdayOf(g.day)))].sort((a, b) => a - b);
       items.push({
         roleId: role.id,
-        shiftId: shift.id,
+        shiftId,
         weekdays,
         perWeek: Math.ceil(group.length / WEEKS),
         text: `${role.name} ${shiftPhrase(shift.name)}: ${weekdaysPhrase(weekdays)}`,

@@ -128,7 +128,7 @@ function buildDays(
     const cell = cells[day];
     const jornadas: Jornada[] = [];
     if (cell?.status === 'work') {
-      const hours = effectiveHours(input.config, employee, cell);
+      const hours = effectiveHours(input.config, employee, cell, day);
       if (hours) jornadas.push(toJornada(day, hours, employee.id));
       else missingHours.push(day);
     }

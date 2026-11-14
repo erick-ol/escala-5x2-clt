@@ -1,6 +1,7 @@
 import { countGaps, shiftPhrase, weekdaysPhrase, type SummaryItem } from './coverage';
 import { fitEmployee } from './generator';
-import type { Employee, Schedule, StoreConfig } from './types';
+import { findShift, isVirtualShiftId, requiredCount } from './time';
+import type { Employee, Schedule, StoreConfig, Weekday } from './types';
 
 export type SuggestionKind = 'hire' | 'move-shift' | 'reduce-minimum';
 
@@ -25,16 +26,21 @@ const HIRE_ID = '__sugestao_contratar__';
 
 function names(config: StoreConfig, roleId: string, shiftId: string) {
   const role = config.roles.find((r) => r.id === roleId)?.name ?? 'pessoa';
-  const shift = config.shifts.find((s) => s.id === shiftId)?.name ?? '';
+  const shift = findShift(config, shiftId)?.name ?? '';
   return { role: role.toLowerCase(), shift: shiftPhrase(shift) };
 }
 
 function hireSuggestion(input: SuggestionInput, item: SummaryItem, before: number): Suggestion {
   const { config, employees, schedule } = input;
-  const hire: Employee = { id: HIRE_ID, name: 'Nova pessoa', roleId: item.roleId, shiftId: item.shiftId, isWoman: false };
-  const withHire = [...employees, hire];
-  const row = fitEmployee({ config, employees: withHire, schedule }, HIRE_ID);
-  const after = countGaps(config, withHire, { ...schedule, [HIRE_ID]: row });
+  // No turno único todos trabalham no mesmo horário: a pessoa nova entra num turno cadastrado (o que mais ajuda).
+  const homes = isVirtualShiftId(item.shiftId) ? config.shifts.map((s) => s.id) : [item.shiftId];
+  let after = Infinity;
+  for (const shiftId of homes.length > 0 ? homes : [item.shiftId]) {
+    const hire: Employee = { id: HIRE_ID, name: 'Nova pessoa', roleId: item.roleId, shiftId, isWoman: false };
+    const withHire = [...employees, hire];
+    const row = fitEmployee({ config, employees: withHire, schedule }, HIRE_ID);
+    after = Math.min(after, countGaps(config, withHire, { ...schedule, [HIRE_ID]: row }));
+  }
   const n = names(config, item.roleId, item.shiftId);
   return {
     kind: 'hire',
@@ -50,6 +56,8 @@ function hireSuggestion(input: SuggestionInput, item: SummaryItem, before: numbe
 function moveSuggestions(input: SuggestionInput, item: SummaryItem, before: number): Suggestion[] {
   const { config, employees, schedule } = input;
   const out: Suggestion[] = [];
+  // O turno único não é um turno do cadastro: não dá para "passar alguém" para ele.
+  if (isVirtualShiftId(item.shiftId)) return out;
   for (const candidate of employees) {
     if (candidate.roleId !== item.roleId || candidate.shiftId === item.shiftId) continue;
     const moved: Employee = { ...candidate, shiftId: item.shiftId, customHours: undefined };
@@ -76,17 +84,26 @@ function moveSuggestions(input: SuggestionInput, item: SummaryItem, before: numb
 
 function reduceSuggestion(input: SuggestionInput, item: SummaryItem, before: number): Suggestion | null {
   const { config } = input;
+  const virtual = isVirtualShiftId(item.shiftId);
   const minimum = config.minimums.find((m) => m.roleId === item.roleId && m.shiftId === item.shiftId);
-  if (!minimum) return null;
-  const perWeekday = minimum.perWeekday.map((v, w) => (item.weekdays.includes(w as never) ? Math.max(0, v - 1) : v));
+  if (!virtual && !minimum) return null;
+  // Exigido hoje em cada dia do padrão (no turno único, o maior mínimo da função entre os turnos).
+  const current = (w: Weekday) => (virtual ? requiredCount(config, w, item.shiftId, item.roleId) : (minimum?.perWeekday[w] ?? 0));
+  const inItem = (w: number) => item.weekdays.includes(w as Weekday);
   const reduced: StoreConfig = {
     ...config,
-    minimums: config.minimums.map((m) => (m === minimum ? { ...m, perWeekday } : m)),
+    minimums: config.minimums.map((m) => {
+      if (virtual ? m.roleId !== item.roleId : m !== minimum) return m;
+      const perWeekday = m.perWeekday.map((v, w) =>
+        inItem(w) ? (virtual ? Math.min(v, Math.max(0, current(w as Weekday) - 1)) : Math.max(0, v - 1)) : v,
+      );
+      return { ...m, perWeekday };
+    }),
   };
   const after = countGaps(reduced, input.employees, input.schedule);
   if (after >= before) return null;
   const n = names(config, item.roleId, item.shiftId);
-  const targets = item.weekdays.map((w) => Math.max(0, minimum.perWeekday[w] - 1));
+  const targets = item.weekdays.map((w) => Math.max(0, current(w) - 1));
   const allZero = targets.every((t) => t === 0);
   const sameTarget = targets.every((t) => t === targets[0]);
   const label = allZero

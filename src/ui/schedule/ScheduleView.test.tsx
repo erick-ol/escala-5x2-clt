@@ -19,12 +19,15 @@ const doc = () => appStore.getState().document;
 
 /**
  * Exemplo do mercado com a escala gerada; `tweak` ajusta o documento antes de gravar.
+ * `singleShift`: mantém o domingo de turno único do exemplo (senão, domingo 06:30–20:30 em dois turnos).
  * Sem segunda área: estes testes verificam buracos e alertas, e a cobertura flexível
  * (Andreza/João como balconistas) taparia os buracos que eles precisam ver.
  */
-function seed(tweak?: (d: AppDocument, s: Schedule) => void, { secondary = true } = {}) {
+function seed(tweak?: (d: AppDocument, s: Schedule) => void, { secondary = true, singleShift = false } = {}) {
   const d = exampleDocument(TODAY);
   if (!secondary) for (const e of d.employees) delete e.secondaryRoleId;
+  // Por padrão, domingo igual aos outros dias (estes testes contam com os buracos do domingo em dois turnos).
+  if (!singleShift) d.config.days = d.config.days.map(() => ({ open: true, opensAt: 390, closesAt: 1230, singleShift: false }));
   const schedule = generateSchedule({ config: d.config, employees: d.employees });
   tweak?.(d, schedule);
   appStore.getState().replaceDocument({ ...d, schedule });
@@ -306,6 +309,41 @@ describe('ScheduleView', () => {
     await user.click(cell(/^Pedro, sábado, semana 2: folga/));
     await user.click(screen.getByRole('button', { name: 'Trabalha' }));
     expect(doc().marks).toEqual([]);
+  });
+
+  test('turno único no domingo do exemplo: célula "U" com o horário da loja e o dia marcado no cabeçalho', () => {
+    seed(undefined, { singleShift: true });
+    renderView();
+    const s = doc().schedule!;
+    const worker = doc().employees.find((e) => s[e.id][6].status === 'work')!;
+    const btn = cell(new RegExp(`^${worker.name}, domingo, semana 1: trabalha turno único 07:00–13:00`));
+    expect(btn.querySelector('.wg-shift')).toHaveTextContent('U');
+    expect(btn.querySelector('.wg-time')).toHaveTextContent('07:00');
+    expect(btn).not.toHaveClass('is-moved');
+    expect(screen.getByRole('button', { name: /^Domingo, dia 7 do ciclo, turno único: ver o dia$/ })).toBeInTheDocument();
+    // Sábado continua com os turnos do cadastro.
+    const saturday = doc().employees.find((e) => e.shiftId === 'manha' && s[e.id][5].status === 'work')!;
+    expect(cell(new RegExp(`^${saturday.name}, sábado, semana 1: trabalha manhã`)).querySelector('.wg-shift')).toHaveTextContent('M');
+  });
+
+  test('no domingo de turno único o painel mostra o turno só para leitura e "Todos os dias" desabilitado', async () => {
+    seed(undefined, { singleShift: true });
+    const { user } = renderView();
+    const s = doc().schedule!;
+    const rosaSunday = [6, 13, 20].find((d) => s.rosa[d].status === 'work')!;
+    if (rosaSunday > 6) await user.click(screen.getByRole('button', { name: `Semana ${Math.floor(rosaSunday / 7) + 1}` }));
+    await user.click(cell(/^Rosa, domingo, semana \d: trabalha turno único 07:00–13:00/));
+    const sheet = screen.getByRole('dialog', { name: 'Rosa' });
+    expect(within(sheet).queryByLabelText('Turno')).not.toBeInTheDocument();
+    expect(within(sheet).getByText(/^Turno único/)).toHaveTextContent('Turno único (07:00–13:00)');
+    // O horário do cadastro da Rosa (05:45–13:30) não vale no turno único.
+    expect(within(sheet).getByLabelText('Entrada')).toHaveValue('07:00');
+    fireEvent.change(within(sheet).getByLabelText('Saída'), { target: { value: '12:00' } });
+    expect(within(sheet).getByRole('button', { name: 'Todos os dias' })).toBeDisabled();
+    expect(within(sheet).getByText(/Neste dia vale o turno único/)).toBeInTheDocument();
+    await user.click(within(sheet).getByRole('button', { name: 'Só este dia' }));
+    expect(doc().schedule!.rosa[rosaSunday].hours).toEqual({ start: 420, end: 720, breakMinutes: 15 });
+    expect(doc().employees.find((e) => e.id === 'rosa')!.customHours).toEqual({ start: 345, end: 810, breakMinutes: 60 });
   });
 
   test('sem escala mostra "Gerar escala"; se o gerador falhar, mostra o erro e "Tentar de novo"', async () => {

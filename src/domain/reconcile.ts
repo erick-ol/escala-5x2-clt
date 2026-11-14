@@ -1,5 +1,5 @@
 import { fitEmployee } from './generator';
-import { weekdayOf } from './time';
+import { findShift, isSingleShiftDay, weekdayOf } from './time';
 import type { AppDocument, Cell, Employee, Schedule } from './types';
 
 /**
@@ -10,6 +10,7 @@ import type { AppDocument, Cell, Employee, Schedule } from './types';
  * - Dia que passou a ser fechado vira "loja fechada" (sem ajustes de turno/horário).
  * - Dia que passou a ser aberto deixa de ser "loja fechada": a linha da pessoa é reencaixada pelo gerador.
  * - Ajustes de turno que apontam para um turno que não existe mais são descartados.
+ * - Nos dias de turno único, ajustes de turno são descartados (todos ficam no turno único; o ajuste de horário fica).
  * - Marcações de quem saiu da equipe, ou de turno/função removidos, são descartadas.
  * - Segunda área que aponta para função removida, ou igual à função principal, é descartada.
  */
@@ -32,7 +33,7 @@ export function reconcileDocument(doc: AppDocument): AppDocument {
 
   const marks = doc.marks.filter(
     (m) =>
-      shiftIds.has(m.shiftId) &&
+      (shiftIds.has(m.shiftId) || !!findShift(config, m.shiftId)) &&
       roleIds.has(m.roleId) &&
       (m.coveredBy.kind === 'owner' || employeeIds.has(m.coveredBy.employeeId)),
   );
@@ -65,6 +66,12 @@ export function reconcileDocument(doc: AppDocument): AppDocument {
         reopened = true;
         changed = true;
         return { status: 'work' };
+      }
+      if (cell.shiftId && isSingleShiftDay(config, weekdayOf(day))) {
+        changed = true;
+        const { shiftId: _drop, ...rest } = cell;
+        void _drop;
+        return rest;
       }
       if (cell.shiftId && !shiftIds.has(cell.shiftId)) {
         changed = true;

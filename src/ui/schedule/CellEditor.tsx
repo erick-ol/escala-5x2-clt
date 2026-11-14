@@ -6,7 +6,9 @@ import {
   effectiveShiftId,
   formatDuration,
   formatTime,
+  findShift,
   grossMinutes,
+  isSingleShiftDay,
   isValidHours,
   parseTime,
   weekOf,
@@ -94,9 +96,11 @@ export function CellEditor({ employeeId, day, alerts, coveringRole, plannedBreak
     apply(() => appStore.getState().setCell(employeeId, day, { ...cell, status }));
   };
 
-  const shiftId = effectiveShiftId(employee, cell);
-  const hours = effectiveHours(config, employee, cell);
+  const shiftId = effectiveShiftId(config, employee, cell, day);
+  const hours = effectiveHours(config, employee, cell, day);
   const isRegisteredShift = shiftId === employee.shiftId;
+  /** Dia de turno único: todos no horário da loja; não há turno para escolher. */
+  const single = isSingleShiftDay(config, weekdayOf(day)) ? findShift(config, shiftId) : undefined;
 
   const dayAlerts = alerts.filter((a) => a.day === day || (a.day === null && (a.week === weekOf(day) || a.week === null)));
 
@@ -147,35 +151,52 @@ export function CellEditor({ employeeId, day, alerts, coveringRole, plannedBreak
           {cell.status === 'work' && (
             <>
               {coveringRole && <p className="sheet-flex">Neste dia cobre: {coveringRole}</p>}
-              <div className="field">
-                <label htmlFor={shiftSelectId}>Turno</label>
-                <select
-                  id={shiftSelectId}
-                  className="input"
-                  value={shiftId}
-                  onChange={(e) => {
-                    const next = e.target.value;
-                    apply(() =>
-                      appStore
-                        .getState()
-                        .setCell(employeeId, day, next === employee.shiftId ? { status: 'work' } : { status: 'work', shiftId: next }),
-                    );
-                  }}
-                >
-                  {config.shifts.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                      {s.id === employee.shiftId ? ' (cadastro)' : ''}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {single ? (
+                <div className="field">
+                  <span className="label">Turno</span>
+                  <p className="cell-single">
+                    Turno único{' '}
+                    <span className="mono">
+                      ({formatTime(single.start)}–{formatTime(single.end)})
+                    </span>
+                  </p>
+                </div>
+              ) : (
+                <div className="field">
+                  <label htmlFor={shiftSelectId}>Turno</label>
+                  <select
+                    id={shiftSelectId}
+                    className="input"
+                    value={shiftId}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      apply(() =>
+                        appStore
+                          .getState()
+                          .setCell(employeeId, day, next === employee.shiftId ? { status: 'work' } : { status: 'work', shiftId: next }),
+                      );
+                    }}
+                  >
+                    {config.shifts.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                        {s.id === employee.shiftId ? ' (cadastro)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
               {hours && (
                 <HoursForm
                   key={`${hours.start}-${hours.end}-${hours.breakMinutes}-${hours.breakStart ?? ''}-${plannedBreakStart ?? ''}`}
                   initial={hours}
                   plannedBreakStart={plannedBreakStart}
                   canApplyAll={isRegisteredShift}
+                  applyAllHint={
+                    single
+                      ? 'Neste dia vale o turno único (horário da loja); "Todos os dias" mudaria o horário do cadastro.'
+                      : 'Neste dia a pessoa está em outro turno; o cadastro não muda.'
+                  }
                   onApplyDay={(h) => apply(() => appStore.getState().setCell(employeeId, day, { ...cell, hours: h }))}
                   onApplyAll={(h) =>
                     apply(() => {
@@ -193,7 +214,7 @@ export function CellEditor({ employeeId, day, alerts, coveringRole, plannedBreak
                     className="link-btn"
                     onClick={() => apply(() => appStore.getState().setCell(employeeId, day, withoutHours(cell)))}
                   >
-                    Voltar ao horário do cadastro
+                    {single ? 'Voltar ao horário do turno único' : 'Voltar ao horário do cadastro'}
                   </button>
                 </p>
               )}
@@ -231,11 +252,13 @@ interface HoursFormProps {
   initial: WorkHours;
   plannedBreakStart: number | null;
   canApplyAll: boolean;
+  /** Por que "Todos os dias" está desabilitado. */
+  applyAllHint: string;
   onApplyDay(hours: WorkHours): void;
   onApplyAll(hours: WorkHours): void;
 }
 
-function HoursForm({ initial, plannedBreakStart, canApplyAll, onApplyDay, onApplyAll }: HoursFormProps) {
+function HoursForm({ initial, plannedBreakStart, canApplyAll, applyAllHint, onApplyDay, onApplyAll }: HoursFormProps) {
   const initialLunch = initial.breakStart ?? plannedBreakStart;
   const [start, setStart] = useState(formatTime(initial.start));
   const [end, setEnd] = useState(formatTime(initial.end));
@@ -369,7 +392,7 @@ function HoursForm({ initial, plannedBreakStart, canApplyAll, onApplyDay, onAppl
               Todos os dias
             </button>
           </div>
-          {!canApplyAll && <p className="hint">Neste dia a pessoa está em outro turno; o cadastro não muda.</p>}
+          {!canApplyAll && <p className="hint">{applyAllHint}</p>}
         </div>
       )}
     </div>

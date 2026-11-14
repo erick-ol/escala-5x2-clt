@@ -12,9 +12,10 @@ export function StoreHoursStep() {
     updateConfig({ days: config.days.map((d, i) => (i === index ? { ...d, ...patch } : d)) });
   };
 
+  /** Copia aberto/abre/fecha de segunda; o "turno único" de cada dia fica como está. */
   const copyToAll = () => {
-    const first = config.days[0];
-    updateConfig({ days: config.days.map(() => ({ ...first })) });
+    const { open, opensAt, closesAt } = config.days[0];
+    updateConfig({ days: config.days.map((d) => ({ ...d, open, opensAt, closesAt })) });
   };
 
   return (
@@ -45,6 +46,9 @@ export function StoreHoursStep() {
         />
       </div>
 
+      <p className="hint">
+        <b>Turno único:</b> todos trabalham no horário da loja nesse dia (ex.: domingo de manhã).
+      </p>
       <div className="setup-days" role="group" aria-label="Horário por dia da semana">
         <div className="setup-days-head" aria-hidden="true">
           <span>Dia</span>
@@ -69,6 +73,15 @@ export function StoreHoursStep() {
                     invalid={invalid}
                     onChange={(v) => setDay(i, { closesAt: v })}
                   />
+                  <label className="checkbox setup-day-single">
+                    <input
+                      type="checkbox"
+                      checked={!!day.singleShift}
+                      aria-label={`${name}: turno único`}
+                      onChange={(e) => setDay(i, { singleShift: e.target.checked })}
+                    />
+                    <span aria-hidden="true">Turno único</span>
+                  </label>
                 </>
               ) : (
                 <span className="setup-day-closed hint">Fechado</span>
@@ -82,7 +95,7 @@ export function StoreHoursStep() {
         <button type="button" className="btn" onClick={copyToAll}>
           Copiar para todos os dias
         </button>
-        <span className="hint">Usa o horário de segunda.</span>
+        <span className="hint">Usa o horário de segunda (o turno único de cada dia não muda).</span>
       </div>
     </section>
   );

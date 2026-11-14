@@ -1,5 +1,5 @@
 import { validSecondary, type FlexCover } from './coverage';
-import { MINUTES_PER_DAY, effectiveHours, effectiveShiftId, grossMinutes, weekdayOf } from './time';
+import { MINUTES_PER_DAY, dayShifts, effectiveHours, effectiveShiftId, grossMinutes, requiredCount, weekdayOf } from './time';
 import {
   CYCLE_DAYS,
   type DayIndex,
@@ -129,9 +129,9 @@ function jobsForDay(ctx: Context, day: DayIndex): Job[] {
   for (const e of employees) {
     const cell = schedule[e.id]?.[day];
     if (cell?.status !== 'work') continue;
-    const hours = effectiveHours(config, e, cell);
+    const hours = effectiveHours(config, e, cell, day);
     if (!hours) continue;
-    const shiftId = effectiveShiftId(e, cell);
+    const shiftId = effectiveShiftId(config, e, cell, day);
     const roleId = ctx.flexRole.get(`${day}|${shiftId}|${e.id}`) ?? e.roleId;
     // Quem já foi para a segunda área no turno não cobre almoço de mais ninguém.
     const coverRoleId = roleId === e.roleId ? validSecondary(e, ctx.roleIds) : undefined;
@@ -163,20 +163,23 @@ function jobsForDay(ctx: Context, day: DayIndex): Job[] {
   return jobs;
 }
 
-/** Mínimo exigido por função em cada minuto do dia: o maior mínimo entre os turnos cuja janela contém o minuto. */
+/**
+ * Mínimo exigido por função em cada minuto do dia: o maior mínimo entre os turnos cuja janela contém o minuto.
+ * Num dia de turno único, a janela é o horário da loja e o mínimo é o maior entre os turnos cadastrados.
+ */
 function requiredByRole(config: StoreConfig, day: DayIndex): Map<string, Int16Array> {
   const result = new Map<string, Int16Array>();
   const wd = weekdayOf(day);
   if (!config.days[wd]?.open) return result;
-  for (const m of config.minimums) {
-    const need = m.perWeekday[wd] ?? 0;
-    if (need <= 0) continue;
-    const shift = config.shifts.find((s) => s.id === m.shiftId);
-    if (!shift) continue;
-    let arr = result.get(m.roleId);
-    if (!arr) result.set(m.roleId, (arr = new Int16Array(SPAN)));
-    const end = Math.min(SPAN, shift.start + grossMinutes(shift));
-    for (let t = shift.start; t < end; t++) if (arr[t] < need) arr[t] = need;
+  for (const shift of dayShifts(config, wd)) {
+    for (const role of config.roles) {
+      const need = requiredCount(config, day, shift.id, role.id);
+      if (need <= 0) continue;
+      let arr = result.get(role.id);
+      if (!arr) result.set(role.id, (arr = new Int16Array(SPAN)));
+      const end = Math.min(SPAN, shift.start + grossMinutes(shift));
+      for (let t = shift.start; t < end; t++) if (arr[t] < need) arr[t] = need;
+    }
   }
   return result;
 }

@@ -69,25 +69,101 @@ export function wrapDay(day: number): DayIndex {
   return ((day % CYCLE_DAYS) + CYCLE_DAYS) % CYCLE_DAYS;
 }
 
+/** Nome do turno virtual dos dias de turno único. */
+export const SINGLE_SHIFT_NAME = 'Turno único';
+const VIRTUAL_PREFIX = '__dia';
+
+/** Id do turno virtual de um dia da semana com turno único (ex.: `__dia6` no domingo). */
+export function virtualShiftId(weekday: Weekday): string {
+  return `${VIRTUAL_PREFIX}${weekday}`;
+}
+
+export function isVirtualShiftId(shiftId: string): boolean {
+  return /^__dia[0-6]$/.test(shiftId);
+}
+
+/** Dia da semana aberto e marcado como "turno único": todos trabalham no horário da loja. */
+export function isSingleShiftDay(config: StoreConfig, weekday: Weekday): boolean {
+  const d = config.days[weekday];
+  return !!d?.open && !!d.singleShift;
+}
+
+/** Turno virtual do dia (horário da loja, intervalo padrão), ou undefined se o dia não é de turno único. */
+export function singleShiftOf(config: StoreConfig, weekday: Weekday): Shift | undefined {
+  if (!isSingleShiftDay(config, weekday)) return undefined;
+  const d = config.days[weekday];
+  return {
+    id: virtualShiftId(weekday),
+    name: SINGLE_SHIFT_NAME,
+    start: d.opensAt,
+    end: d.closesAt,
+    breakMinutes: defaultBreakFor(d.opensAt, d.closesAt),
+  };
+}
+
+/** Turnos que valem num dia da semana: só o virtual nos dias de turno único, senão os cadastrados. */
+export function dayShifts(config: StoreConfig, weekday: Weekday): Shift[] {
+  const single = singleShiftOf(config, weekday);
+  return single ? [single] : config.shifts;
+}
+
+/** Turno pelo id; resolve também o turno virtual (se o dia ainda é de turno único). */
 export function findShift(config: StoreConfig, shiftId: string): Shift | undefined {
+  if (isVirtualShiftId(shiftId)) return singleShiftOf(config, Number(shiftId.slice(VIRTUAL_PREFIX.length)) as Weekday);
   return config.shifts.find((s) => s.id === shiftId);
 }
 
-export function effectiveShiftId(employee: Employee, cell: Cell | undefined): string {
+/** Turno em que a pessoa trabalha no dia: o virtual nos dias de turno único; senão o ajuste do dia ou o cadastro. */
+export function effectiveShiftId(config: StoreConfig, employee: Employee, cell: Cell | undefined, day: DayIndex): string {
+  const wd = weekdayOf(day);
+  if (isSingleShiftDay(config, wd)) return virtualShiftId(wd);
   return cell?.shiftId ?? employee.shiftId;
+}
+
+/**
+ * Mínimo de pessoas da função no turno, num dia do ciclo (0 se a loja está fechada).
+ * No turno virtual (turno único) vale o maior mínimo da função entre os turnos cadastrados.
+ * Nos turnos cadastrados de um dia de turno único, 0.
+ */
+export function requiredCount(config: StoreConfig, day: DayIndex, shiftId: string, roleId: string): number {
+  const wd = weekdayOf(day);
+  if (!config.days[wd]?.open) return 0;
+  const single = isSingleShiftDay(config, wd);
+  if (isVirtualShiftId(shiftId)) {
+    if (!single || shiftId !== virtualShiftId(wd)) return 0;
+    let max = 0;
+    for (const m of config.minimums) if (m.roleId === roleId) max = Math.max(max, m.perWeekday[wd] ?? 0);
+    return max;
+  }
+  if (single) return 0;
+  const min = config.minimums.find((m) => m.shiftId === shiftId && m.roleId === roleId);
+  return Math.max(0, min?.perWeekday[wd] ?? 0);
 }
 
 /**
  * Horário efetivo (KTD13): ajuste do dia > cadastro > padrão do turno.
  * Se o dia está num turno diferente do cadastro, o horário do cadastro não se aplica.
+ * Nos dias de turno único vale o horário da loja (o horário do cadastro é do turno cadastrado).
  */
-export function effectiveHours(config: StoreConfig, employee: Employee, cell: Cell | undefined): WorkHours | null {
+export function effectiveHours(
+  config: StoreConfig,
+  employee: Employee,
+  cell: Cell | undefined,
+  day: DayIndex,
+): WorkHours | null {
   if (cell?.hours) return cell.hours;
-  const shiftId = effectiveShiftId(employee, cell);
+  const shiftId = effectiveShiftId(config, employee, cell, day);
   if (shiftId === employee.shiftId && employee.customHours) return employee.customHours;
   const shift = findShift(config, shiftId);
   if (!shift) return null;
   return shiftHours(shift);
+}
+
+/** Horário do cadastro da pessoa (fora dos dias de turno único): cadastro > padrão do turno. */
+export function registeredHours(config: StoreConfig, employee: Employee): WorkHours | null {
+  if (employee.customHours) return employee.customHours;
+  const shift = config.shifts.find((s) => s.id === employee.shiftId);
+  return shift ? shiftHours(shift) : null;
 }
 
 /** Horário padrão de um turno (com o início do almoço, se o turno define um). */

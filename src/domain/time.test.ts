@@ -55,13 +55,13 @@ describe('tempo', () => {
     const doc = exampleDocument(new Date('2026-11-14'));
     const rosa = doc.employees.find((e) => e.id === 'rosa')!;
     const andreza = doc.employees.find((e) => e.id === 'andreza')!;
-    expect(effectiveHours(doc.config, andreza, { status: 'work' })?.start).toBe(390);
-    expect(effectiveHours(doc.config, rosa, { status: 'work' })?.start).toBe(345);
+    expect(effectiveHours(doc.config, andreza, { status: 'work' }, 0)?.start).toBe(390);
+    expect(effectiveHours(doc.config, rosa, { status: 'work' }, 0)?.start).toBe(345);
     expect(
-      effectiveHours(doc.config, rosa, { status: 'work', hours: { start: 420, end: 900, breakMinutes: 60 } })?.start,
+      effectiveHours(doc.config, rosa, { status: 'work', hours: { start: 420, end: 900, breakMinutes: 60 } }, 0)?.start,
     ).toBe(420);
     // Rosa num turno diferente do cadastro usa o horário daquele turno
-    expect(effectiveHours(doc.config, rosa, { status: 'work', shiftId: 'tarde' })?.start).toBe(780);
+    expect(effectiveHours(doc.config, rosa, { status: 'work', shiftId: 'tarde' }, 0)?.start).toBe(780);
   });
 
   test('valida horários', () => {

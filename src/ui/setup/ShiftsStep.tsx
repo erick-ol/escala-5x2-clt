@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { defaultBreakFor, formatDuration, formatTime, workedMinutes } from '../../domain/time';
-import type { Shift } from '../../domain/types';
+import { joinPt } from '../../domain/coverage';
+import { defaultBreakFor, formatDuration, formatTime, isSingleShiftDay, workedMinutes } from '../../domain/time';
+import { WEEKDAY_NAMES, type Shift, type Weekday } from '../../domain/types';
 import { useAppStore } from '../../state/store';
 import { longestOpenDay, pruneMinimums, randomId, suggestShifts } from './setupLogic';
 import { TimeInput } from './TimeInput';
@@ -12,6 +13,7 @@ export function ShiftsStep() {
   const updateConfig = useAppStore((s) => s.updateConfig);
   const [count, setCount] = useState(() => Math.min(MAX_SHIFTS, Math.max(1, config.shifts.length || 2)));
   const longest = longestOpenDay(config.days);
+  const singleDays = WEEKDAY_NAMES.filter((_, w) => isSingleShiftDay(config, w as Weekday)).map((n) => n.toLowerCase());
 
   const setShifts = (shifts: Shift[]) => {
     updateConfig({ shifts, minimums: pruneMinimums({ ...config, shifts }) });
@@ -45,6 +47,12 @@ export function ShiftsStep() {
         Turnos
       </h2>
       <p className="hint">De 1 a 3 turnos. O site sugere os horários a partir do funcionamento; tudo pode ser ajustado.</p>
+      {singleDays.length > 0 && (
+        <p className="hint">
+          {singleDays.length === 1 ? 'O dia marcado' : 'Os dias marcados'} com turno único ({joinPt(singleDays)}) não
+          {singleDays.length === 1 ? ' usa' : ' usam'} estes turnos: todos trabalham no horário da loja.
+        </p>
+      )}
 
       <div className="setup-suggest card">
         <div className="field">

@@ -9,8 +9,13 @@ const h = (hh: number, mm = 0) => hh * 60 + mm;
 const TER = [1, 8, 15];
 const QUI = [3, 10, 17];
 
+/** O exemplo com o domingo igual aos outros dias (sem turno único): estes testes não são sobre o turno único. */
+function withoutSingleShift(config: StoreConfig): StoreConfig {
+  return { ...config, days: config.days.map(() => ({ open: true, opensAt: 6 * 60 + 30, closesAt: 20 * 60 + 30, singleShift: false })) };
+}
+
 function baseConfig(): StoreConfig {
-  return exampleDocument(new Date('2026-12-01')).config;
+  return withoutSingleShift(exampleDocument(new Date('2026-12-01')).config);
 }
 
 function emp(id: string, roleId: string, shiftId: string): Employee {

@@ -594,3 +594,9 @@
 .dt-strip-covered { position: absolute; top: 0; bottom: 0; background: var(--ink-3); opacity: 0.5; }
 .dt-off { margin: 0; font-size: 14px; color: var(--ink-2); }
 .dt-off-label { font-weight: 700; color: var(--ink); }
+
+/* Turno único: o turno do dia não se escolhe, só se mostra. */
+.cell-single {
+  margin: 0; padding: var(--s-3); border-radius: var(--radius-sm);
+  background: var(--paper-2); font-weight: 600;
+}

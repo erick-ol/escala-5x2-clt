@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { gapKey, shiftPhrase, type Gap } from '../../domain/coverage';
 import type { LunchGap, PresenceBlock } from '../../domain/lunch';
-import { MINUTES_PER_DAY, findShift, formatTime, weekOf, weekdayOf } from '../../domain/time';
+import { MINUTES_PER_DAY, findShift, formatTime, isSingleShiftDay, weekOf, weekdayOf } from '../../domain/time';
 import { CYCLE_DAYS, WEEKDAY_NAMES, type AppDocument, type Minutes } from '../../domain/types';
 import { toggleLunchCover, type Derived } from '../../state/useDerived';
 import { roleName } from './labels';
@@ -175,7 +175,9 @@ export function DayTimeline({ day, doc, derived, onChangeDay, onBack, onOpenCell
       {storeDay?.open ? (
         <p className="hint dt-sub">
           Loja aberta das <span className="mono">{formatTime(storeDay.opensAt)}</span> às{' '}
-          <span className="mono">{formatTime(storeDay.closesAt)}</span>. Toque numa barra para editar o horário.
+          <span className="mono">{formatTime(storeDay.closesAt)}</span>.
+          {isSingleShiftDay(config, wd) && ' Turno único: todos trabalham no horário da loja.'} Toque numa barra para editar o
+          horário.
         </p>
       ) : (
         <p className="dt-closed">Loja fechada neste dia.</p>

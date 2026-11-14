@@ -31,6 +31,11 @@ export interface StoreDay {
   open: boolean;
   opensAt: Minutes;
   closesAt: Minutes;
+  /**
+   * Turno único: nesse dia todos trabalham no horário da loja (ex.: domingo só de manhã).
+   * Os turnos cadastrados não valem; o mínimo de cada função é o maior entre os turnos.
+   */
+  singleShift?: boolean;
 }
 
 export interface Shift extends WorkHours {

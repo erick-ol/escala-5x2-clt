@@ -114,6 +114,33 @@ describe('SetupWizard', () => {
     expect(screen.getByLabelText('Domingo: fecha')).toHaveValue('20:30');
   });
 
+  test('"Turno único" por dia grava singleShift; "Copiar para todos os dias" não mexe nele', async () => {
+    const user = userEvent.setup();
+    render(<SetupWizard onFinish={() => {}} />);
+    expect(screen.getByText(/todos trabalham no horário da loja nesse dia \(ex\.: domingo de manhã\)/)).toBeInTheDocument();
+    const sunday = screen.getByRole('checkbox', { name: 'Domingo: turno único' });
+    expect(sunday).not.toBeChecked();
+    await user.click(sunday);
+    expect(doc().config.days[6].singleShift).toBe(true);
+    expect(doc().config.days.slice(0, 6).every((d) => !d.singleShift)).toBe(true);
+
+    fireEvent.change(screen.getByLabelText('Segunda: abre'), { target: { value: '07:00' } });
+    await user.click(screen.getByRole('button', { name: 'Copiar para todos os dias' }));
+    expect(doc().config.days[6]).toMatchObject({ opensAt: h(7), singleShift: true });
+    expect(doc().config.days[0].singleShift).toBeFalsy();
+
+    // Dia fechado não mostra a opção.
+    await user.click(screen.getByRole('checkbox', { name: 'Domingo' }));
+    expect(screen.queryByRole('checkbox', { name: 'Domingo: turno único' })).not.toBeInTheDocument();
+  });
+
+  test('a etapa de turnos avisa quais dias têm turno único', () => {
+    seedThroughRoles();
+    setConfig({ days: doc().config.days.map((d, i) => ({ ...d, singleShift: i === 6 })) });
+    render(<SetupWizard onFinish={() => {}} initialStep={1} />);
+    expect(screen.getByText(/O dia marcado com turno único \(domingo\) não usa estes turnos/)).toBeInTheDocument();
+  });
+
   test('pular pelo indicador de etapas para a etapa com problema e mostra o motivo', async () => {
     const user = userEvent.setup();
     render(<SetupWizard onFinish={() => {}} />);

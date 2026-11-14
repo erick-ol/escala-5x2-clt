@@ -137,6 +137,8 @@
 .setup-day.is-closed .setup-day-name span { color: var(--ink-3); }
 .setup-day-closed { grid-column: 2 / 4; }
 .setup-day .input { padding: 0 6px; }
+.setup-day-single { grid-column: 2 / 4; min-height: 32px; gap: var(--s-2); font-size: 14px; color: var(--ink-2); }
+.setup-day-single input { width: 18px; height: 18px; }
 .setup-row-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 
 /* ---------- Listas de itens (turnos, funções, pessoas) ---------- */

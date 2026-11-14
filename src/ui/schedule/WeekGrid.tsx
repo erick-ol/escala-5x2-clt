@@ -1,6 +1,15 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { gapKey, type Gap } from '../../domain/coverage';
-import { effectiveHours, effectiveShiftId, formatDuration, formatTime, weekdayOf } from '../../domain/time';
+import {
+  effectiveHours,
+  effectiveShiftId,
+  formatDuration,
+  formatTime,
+  isSingleShiftDay,
+  isVirtualShiftId,
+  registeredHours,
+  weekdayOf,
+} from '../../domain/time';
 import { DAYS_PER_WEEK, WEEKDAY_NAMES, WEEKDAY_SHORT, type AppDocument, type CoverageMark, type Employee } from '../../domain/types';
 import { alertsInWeek, type Derived } from '../../state/useDerived';
 import { flexFor, flexTag } from '../flex';
@@ -74,7 +83,7 @@ function buildRows(doc: AppDocument, derived: Derived, week: number): GridRow[] 
 
 /** "Manhã 06:30–14:00": turno do cadastro com o horário da pessoa. */
 function shiftLabel(config: AppDocument['config'], employee: Employee): string {
-  const hours = effectiveHours(config, employee, undefined);
+  const hours = registeredHours(config, employee);
   const name = shiftName(config, employee.shiftId);
   return hours ? `${name} ${formatTime(hours.start)}–${formatTime(hours.end)}` : name;
 }
@@ -176,6 +185,7 @@ export function WeekGrid({
           const day = first + c;
           const wd = weekdayOf(day);
           const open = config.days[wd]?.open;
+          const single = isSingleShiftDay(config, wd);
           return (
             <div
               role="columnheader"
@@ -185,7 +195,7 @@ export function WeekGrid({
               <button
                 type="button"
                 className="wg-daybtn"
-                aria-label={`${WEEKDAY_NAMES[wd]}, dia ${day + 1} do ciclo: ver o dia`}
+                aria-label={`${WEEKDAY_NAMES[wd]}, dia ${day + 1} do ciclo${single ? ', turno único' : ''}: ver o dia`}
                 data-r={HEAD_ROW}
                 data-c={c}
                 tabIndex={tabIndexFor(HEAD_ROW, c)}
@@ -195,7 +205,7 @@ export function WeekGrid({
                 <span className="wg-dayhead-name">{WEEKDAY_SHORT[wd]}</span>
                 <span className="wg-dayhead-num mono">{day + 1}</span>
                 <span className="wg-dayhead-more" aria-hidden="true">
-                  ver
+                  {single ? 'único' : 'ver'}
                 </span>
               </button>
             </div>
@@ -309,8 +319,8 @@ export function WeekGrid({
                   </span>
                 );
               } else {
-                const sid = effectiveShiftId(employee, cell);
-                const hours = effectiveHours(config, employee, cell);
+                const sid = effectiveShiftId(config, employee, cell, day);
+                const hours = effectiveHours(config, employee, cell, day);
                 label += `trabalha ${shiftName(config, sid).toLowerCase()}`;
                 if (hours) label += ` ${formatTime(hours.start)}–${formatTime(hours.end)}`;
                 if (cell.hours) label += ', horário ajustado neste dia';
@@ -319,7 +329,7 @@ export function WeekGrid({
                   cls += ' is-flex';
                 }
                 cls += ` wg-work tone-${shiftTone(config, sid)}`;
-                if (sid !== employee.shiftId) cls += ' is-moved';
+                if (sid !== employee.shiftId && !isVirtualShiftId(sid)) cls += ' is-moved';
                 body = (
                   <>
                     <span className="wg-shift" aria-hidden="true">

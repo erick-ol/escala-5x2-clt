@@ -1,5 +1,5 @@
 import { gapKey, type Gap } from '../../domain/coverage';
-import { effectiveShiftId, formatTime, weekOf, weekdayOf } from '../../domain/time';
+import { effectiveShiftId, findShift, formatTime, weekOf, weekdayOf } from '../../domain/time';
 import { WEEKDAY_NAMES, type CoverageMark, type Coverer } from '../../domain/types';
 import { appStore, useAppStore } from '../../state/store';
 import { roleName, shiftName } from './labels';
@@ -37,7 +37,7 @@ export function GapSheet({ gap, mark, onClose }: GapSheetProps) {
 
   const { config, employees, schedule } = doc;
   const key = gapKey(gap);
-  const shift = config.shifts.find((s) => s.id === gap.shiftId);
+  const shift = findShift(config, gap.shiftId);
   const role = roleName(config, gap.roleId);
 
   const setCoverer = (coveredBy: Coverer) => {
@@ -51,7 +51,7 @@ export function GapSheet({ gap, mark, onClose }: GapSheetProps) {
   const people = employees.map((e) => {
     const cell = schedule?.[e.id]?.[gap.day];
     const off = cell?.status !== 'work';
-    const status = off ? 'de folga' : `trabalha ${shiftName(config, effectiveShiftId(e, cell)).toLowerCase()}`;
+    const status = off ? 'de folga' : `trabalha ${shiftName(config, effectiveShiftId(config, e, cell, gap.day)).toLowerCase()}`;
     return { e, off, status };
   });
   people.sort((a, b) => Number(b.off) - Number(a.off));

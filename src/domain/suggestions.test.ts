@@ -10,9 +10,15 @@ import type { Employee, StoreConfig } from './types';
  */
 function marketInput(opts: { secondary?: boolean } = {}) {
   const doc = exampleDocument(new Date('2026-11-14'));
+  const config = withoutSingleShift(doc.config);
   const employees = opts.secondary ? doc.employees : doc.employees.map((e) => ({ ...e, secondaryRoleId: undefined }));
-  const schedule = generateSchedule({ config: doc.config, employees });
-  return { config: doc.config, employees, schedule };
+  const schedule = generateSchedule({ config, employees });
+  return { config, employees, schedule };
+}
+
+/** O exemplo com o domingo igual aos outros dias (sem turno único): estes testes não são sobre o turno único. */
+function withoutSingleShift(config: StoreConfig): StoreConfig {
+  return { ...config, days: config.days.map(() => ({ open: true, opensAt: 6 * 60 + 30, closesAt: 20 * 60 + 30, singleShift: false })) };
 }
 
 describe('sugestões', () => {

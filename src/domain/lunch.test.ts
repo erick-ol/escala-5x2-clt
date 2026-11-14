@@ -16,8 +16,13 @@ import { CYCLE_DAYS } from './types';
 
 const h = (hh: number, mm = 0) => hh * 60 + mm;
 
+/** O exemplo com o domingo igual aos outros dias (sem turno único): estes testes não são sobre o turno único. */
+function withoutSingleShift(config: StoreConfig): StoreConfig {
+  return { ...config, days: config.days.map(() => ({ open: true, opensAt: 6 * 60 + 30, closesAt: 20 * 60 + 30, singleShift: false })) };
+}
+
 function baseConfig(): StoreConfig {
-  return { ...exampleDocument(new Date('2026-11-14')).config, regime: '42h' };
+  return { ...withoutSingleShift(exampleDocument(new Date('2026-11-14')).config), regime: '42h' };
 }
 
 function emp(id: string, roleId: string, shiftId: string, extra: Partial<Employee> = {}): Employee {
@@ -49,7 +54,7 @@ describe('planLunches', () => {
           expect(lunch).toBeNull();
           continue;
         }
-        const hours = effectiveHours(input.config, e, cell)!;
+        const hours = effectiveHours(input.config, e, cell, d)!;
         expect(lunch).not.toBeNull();
         expect(lunch! % 15).toBe(0);
         expect(lunch!).toBeGreaterThanOrEqual(hours.start + LUNCH_MIN_OFFSET);

@@ -1,4 +1,15 @@
-import { effectiveShiftId, weekdayOf } from './time';
+import { INTERSHIFT_REST_MINUTES } from './legal';
+import {
+  MINUTES_PER_DAY,
+  effectiveHours,
+  effectiveShiftId,
+  grossMinutes,
+  isSingleShiftDay,
+  isVirtualShiftId,
+  requiredCount,
+  virtualShiftId,
+  weekdayOf,
+} from './time';
 import { CYCLE_DAYS, DAYS_PER_WEEK, SUNDAY, WEEKS, type Cell, type Employee, type Schedule, type StoreConfig } from './types';
 
 export interface GenerateInput {
@@ -40,7 +51,9 @@ const STREAK_PENALTY = 1;
  *   uma folga atribuída não pode passar de 2 dias. Sequências só de loja fechada não contam contra a pessoa
  *   (a pessoa não escolheu), mas uma folga colada a elas soma (ex.: sábado de folga + domingo fechado = 2,
  *   ok; + segunda de folga = 3, não);
- * - nunca mais de 6 dias seguidos de trabalho.
+ * - nunca mais de 6 dias seguidos de trabalho;
+ * - descanso de 11h entre jornadas: trabalhar dois dias seguidos cujo horário deixa menos de 11h entre a
+ *   saída e a entrada conta como violação (ex.: sábado à tarde até 20:30 e domingo de turno único às 07:00).
  * São tratadas como restrições muito pesadas: se forem impossíveis para alguém, o gerador entrega a melhor
  * escala que encontrar em vez de falhar.
  */
@@ -56,6 +69,11 @@ class Solver {
   private readonly secondary: number[];
   /** Índice do turno do cadastro (-1 se o turno não existe). */
   private readonly home: number[];
+  /** Dias de turno único: todos trabalham no turno virtual (índice `single`). */
+  private readonly singleDay: boolean[];
+  /** Índice do turno virtual dos dias de turno único (depois dos turnos cadastrados). */
+  private readonly single: number;
+  private readonly hasSingle: boolean;
   /** req[s][r][d]: mínimo exigido; funções extras têm 0. */
   private readonly req: number[][][];
   /** cnt[s][r][d]: pessoas da função principal r trabalhando no turno s no dia d. */
@@ -66,6 +84,8 @@ class Solver {
   private readonly members: number[][];
   private readonly nRoles: number;
   private readonly scratch: number[];
+  /** Bit d: trabalhar no dia anterior e no dia d deixa menos de 11h de descanso (horário padrão da pessoa). */
+  private readonly restConflict: number[];
   /** off[k][d] para as pessoas que o gerador mexe. */
   readonly off: boolean[][];
 
@@ -84,6 +104,10 @@ class Solver {
     this.offsPerWeek = Math.max(0, MIN_REST_DAYS_PER_WEEK - closedPerWeek);
 
     const shiftIndex = new Map(config.shifts.map((s, i) => [s.id, i]));
+    this.single = config.shifts.length;
+    this.singleDay = Array.from({ length: CYCLE_DAYS }, (_, d) => isSingleShiftDay(config, weekdayOf(d)));
+    this.hasSingle = this.singleDay.some(Boolean);
+    const nShifts = config.shifts.length + 1;
     const roleIndex = new Map(config.roles.map((r, i) => [r.id, i]));
     const nCfgRoles = config.roles.length;
     this.role = all.map((e) => {
@@ -103,31 +127,36 @@ class Solver {
     this.home = all.map((e) => shiftIndex.get(e.shiftId) ?? -1);
 
     const zeros = () => Array.from({ length: CYCLE_DAYS }, () => 0);
-    this.req = config.shifts.map(() => Array.from({ length: this.nRoles }, zeros));
-    this.cnt = config.shifts.map(() => Array.from({ length: this.nRoles }, zeros));
-    const seen = new Set<string>();
-    for (const m of config.minimums) {
-      const s = shiftIndex.get(m.shiftId);
-      const r = roleIndex.get(m.roleId);
-      if (s === undefined || r === undefined || r >= nCfgRoles) continue;
-      const key = `${s}|${r}`;
-      if (seen.has(key)) continue; // vale o primeiro mínimo, como na cobertura
-      seen.add(key);
-      for (let d = 0; d < CYCLE_DAYS; d++) {
-        this.req[s][r][d] = this.open[d] ? Math.max(0, m.perWeekday[weekdayOf(d)] ?? 0) : 0;
+    this.req = Array.from({ length: nShifts }, () => Array.from({ length: this.nRoles }, zeros));
+    this.cnt = Array.from({ length: nShifts }, () => Array.from({ length: this.nRoles }, zeros));
+    // Mesma regra da cobertura (requiredCount): turnos cadastrados nos dias normais, turno virtual nos de turno único.
+    const ids = [...config.shifts.map((s) => s.id), null];
+    for (let s = 0; s < nShifts; s++) {
+      for (let r = 0; r < nCfgRoles; r++) {
+        const roleId = config.roles[r].id;
+        for (let d = 0; d < CYCLE_DAYS; d++) {
+          const id = ids[s] ?? virtualShiftId(weekdayOf(d));
+          this.req[s][r][d] = requiredCount(config, d, id, roleId);
+        }
       }
     }
+
+    this.restConflict = all.map((e) => restConflictMask(config, e));
 
     this.off = all.map(() => Array.from({ length: CYCLE_DAYS }, () => false));
     this.at = all.map((e, k) => {
       const row = fixed[k];
       return Array.from({ length: CYCLE_DAYS }, (_, d) => {
-        if (row === null) return this.open[d] ? this.home[k] : -1; // todos começam trabalhando nos dias abertos
+        if (row === null) return this.open[d] ? this.shiftOn(k, d) : -1; // todos começam trabalhando nos dias abertos
         const cell = row[d];
-        return cell?.status === 'work' ? (shiftIndex.get(effectiveShiftId(e, cell)) ?? -1) : -1;
+        if (cell?.status !== 'work') return -1;
+        const id = effectiveShiftId(config, e, cell, d);
+        return isVirtualShiftId(id) ? this.single : (shiftIndex.get(id) ?? -1);
       });
     });
-    this.members = config.shifts.map((_, s) => all.map((_, k) => k).filter((k) => this.at[k].includes(s) || this.home[k] === s));
+    this.members = Array.from({ length: nShifts }, (_, s) =>
+      all.map((_, k) => k).filter((k) => this.at[k].includes(s) || this.home[k] === s || (s === this.single && this.hasSingle)),
+    );
     all.forEach((_, k) => {
       for (let d = 0; d < CYCLE_DAYS; d++) {
         const s = this.at[k][d];
@@ -160,16 +189,21 @@ class Solver {
     return missing;
   }
 
-  /** Buracos do turno s nos dias [from, to). */
-  gapsIn(s: number, from: number, to: number): number {
+  /** Turno da pessoa k no dia d: o virtual nos dias de turno único, senão o do cadastro. */
+  shiftOn(k: number, d: number): number {
+    return this.singleDay[d] ? this.single : this.home[k];
+  }
+
+  /** Buracos que dependem das folgas da pessoa k nos dias [from, to): turno do cadastro e turno único. */
+  gapsFor(k: number, from: number, to: number): number {
     let n = 0;
-    for (let d = from; d < to; d++) n += this.gapAt(s, d);
+    for (let d = from; d < to; d++) n += this.gapAt(this.shiftOn(k, d), d);
     return n;
   }
 
   /** Buracos a mais (ou a menos, se negativo) se a pessoa k inverter folga/trabalho no dia d. */
   toggleDelta(k: number, d: number): number {
-    const s = this.home[k];
+    const s = this.shiftOn(k, d);
     if (s < 0) return 0;
     const before = this.gapAt(s, d);
     this.setOff(k, d, !this.off[k][d]);
@@ -180,7 +214,7 @@ class Solver {
 
   /** Sobra da função principal da pessoa no turno do cadastro (desempate). */
   surplus(k: number, d: number): number {
-    const s = this.home[k];
+    const s = this.shiftOn(k, d);
     if (s < 0) return 0;
     const r = this.role[k];
     return this.cnt[s][r][d] - this.req[s][r][d];
@@ -194,7 +228,7 @@ class Solver {
   setOff(k: number, day: number, value: boolean): void {
     if (this.off[k][day] === value || !this.open[day]) return;
     this.off[k][day] = value;
-    const s = this.home[k];
+    const s = this.shiftOn(k, day);
     this.at[k][day] = value ? -1 : s;
     if (s >= 0) this.cnt[s][this.role[k]][day] += value ? -1 : 1;
   }
@@ -214,6 +248,14 @@ class Solver {
     return hasOff && len > MAX_REST_RUN;
   }
 
+  /** Quantas vezes a pessoa k trabalha dois dias seguidos com menos de 11h de descanso entre eles. */
+  shortRests(k: number): number {
+    const conflict = this.restConflict[k];
+    if (conflict === 0) return 0;
+    const work = maskOf((d) => this.open[d] && !this.off[k][d]);
+    return popcount(work & ahead(work, CYCLE_DAYS - 1) & conflict);
+  }
+
   offsIn(k: number, week: number): number {
     let n = 0;
     for (let d = week * DAYS_PER_WEEK; d < (week + 1) * DAYS_PER_WEEK; d++) if (this.off[k][d]) n++;
@@ -227,7 +269,7 @@ class Solver {
     const sundayOffsByGroup = new Map<string, number[]>();
     const sorted = [...order].sort((a, b) => Number(this.all[b].isWoman) - Number(this.all[a].isWoman) || a - b);
     for (const k of sorted) {
-      const key = `${this.home[k]}|${this.role[k]}`;
+      const key = `${this.shiftOn(k, SUNDAY)}|${this.role[k]}`;
       let perWeek = sundayOffsByGroup.get(key);
       if (!perWeek) {
         perWeek = Array.from({ length: WEEKS }, () => 0);
@@ -266,8 +308,9 @@ class Solver {
             const gap = this.toggleDelta(k, d);
             this.setOff(k, d, true);
             const tooLong = Number(this.restRunTooLong(k, d));
+            const shortRest = this.shortRests(k);
             this.setOff(k, d, false);
-            const score = [tooLong, gap, this.together ? -adjacent : adjacent, -this.surplus(k, d), d];
+            const score = [tooLong + shortRest, gap, this.together ? -adjacent : adjacent, -this.surplus(k, d), d];
             if (bestDay < 0 || lexLess(score, bestScore)) {
               bestDay = d;
               bestScore = score;
@@ -293,7 +336,6 @@ class Solver {
     for (let pass = 0; pass < MAX_PASSES; pass++) {
       let improved = false;
       for (const k of order) {
-        const s = this.home[k];
         const options: { offs: number[]; mask: number; gaps: number }[][] = [];
         const current: number[][] = [];
         for (let w = 0; w < WEEKS; w++) {
@@ -308,7 +350,7 @@ class Solver {
           options.push(
             combinations(days, now.length).map((offs) => {
               this.applyWeek(k, w, offs);
-              const gaps = this.gapsIn(s, w * DAYS_PER_WEEK, (w + 1) * DAYS_PER_WEEK);
+              const gaps = this.gapsFor(k, w * DAYS_PER_WEEK, (w + 1) * DAYS_PER_WEEK);
               return { offs, mask: offs.reduce((m, d) => m | (1 << d), 0), gaps };
             }),
           );
@@ -320,9 +362,10 @@ class Solver {
         const currentGaps = options.reduce((sum, opts, w) => sum + (opts.find((o) => sameSet(o.offs, current[w]))?.gaps ?? 0), 0);
         // Se a linha atual já fere o rodízio de domingo (não deveria), não o exige das alternativas.
         const checkSunday = this.sundayOpen && sundayRuleOk(currentMask, isWoman);
+        const conflict = this.restConflict[k];
         const costOf = (offMask: number, gaps: number): number => {
           if (checkSunday && !sundayRuleOk(offMask, isWoman)) return Infinity;
-          const { violations, soft } = maskCost(offMask, closedMask, this.together);
+          const { violations, soft } = maskCost(offMask, closedMask, this.together, conflict);
           return violations * VIOLATION_WEIGHT + gaps * GAP_WEIGHT + soft;
         };
         let bestCost = costOf(currentMask, currentGaps);
@@ -394,15 +437,40 @@ function windows(x: number, len: number): number {
  * - preferência: pares de descanso seguidos (prêmio em 'together', custo em 'flexible') e
  *   dias de trabalho seguidos acima de 5.
  */
-function maskCost(offMask: number, closedMask: number, together: boolean): { violations: number; soft: number } {
+function maskCost(
+  offMask: number,
+  closedMask: number,
+  together: boolean,
+  restConflict = 0,
+): { violations: number; soft: number } {
   const rest = offMask | closedMask;
   const work = ~rest & FULL_MASK;
   const restWithOff = windows(rest, MAX_REST_RUN + 1) & (offMask | ahead(offMask, 1) | ahead(offMask, 2));
-  const violations = popcount(restWithOff) + popcount(windows(work, MAX_WORK_RUN + 1));
+  // Dias trabalhados logo depois de outro dia trabalhado com menos de 11h de descanso entre eles.
+  const shortRest = work & ahead(work, CYCLE_DAYS - 1) & restConflict;
+  const violations = popcount(restWithOff) + popcount(windows(work, MAX_WORK_RUN + 1)) + popcount(shortRest);
   const pairs = popcount(rest & ahead(rest, 1));
   const streak = popcount(windows(work, COMFORT_WORK_RUN + 1));
   const pairCost = together ? -PAIR_REWARD * pairs : PAIR_PENALTY * pairs;
   return { violations, soft: pairCost + STREAK_PENALTY * streak };
+}
+
+/**
+ * Bit d = trabalhar no dia d-1 (circular) e no dia d, no horário padrão da pessoa, deixa menos de 11h de
+ * descanso entre as jornadas. Acontece, por exemplo, entre o sábado à tarde e um domingo de turno único de manhã.
+ */
+function restConflictMask(config: StoreConfig, employee: Employee): number {
+  const work: Cell = { status: 'work' };
+  const hours = Array.from({ length: CYCLE_DAYS }, (_, d) => effectiveHours(config, employee, work, d));
+  let mask = 0;
+  for (let d = 0; d < CYCLE_DAYS; d++) {
+    const prev = hours[(d + CYCLE_DAYS - 1) % CYCLE_DAYS];
+    const cur = hours[d];
+    if (!prev || !cur) continue;
+    const rest = MINUTES_PER_DAY + cur.start - (prev.start + grossMinutes(prev));
+    if (rest < INTERSHIFT_REST_MINUTES) mask |= 1 << d;
+  }
+  return mask;
 }
 
 /** R10/R10a pela máscara de folgas: 1 domingo de folga no ciclo; mulheres nunca 2 domingos trabalhados seguidos. */

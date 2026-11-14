@@ -34,7 +34,9 @@ const SHIFT_NAMES: Record<number, string[]> = {
 /** Dia aberto com a maior jornada da loja, ou null se nenhum dia abre com horário válido. */
 export function longestOpenDay(days: StoreDay[]): StoreDay | null {
   let best: StoreDay | null = null;
-  for (const d of days) {
+  // Dias de turno único não usam os turnos: ficam de fora, a não ser que todos sejam assim.
+  const normal = days.filter((d) => d.open && !d.singleShift);
+  for (const d of normal.length > 0 ? normal : days) {
     if (!d.open || d.closesAt <= d.opensAt) continue;
     if (!best || d.closesAt - d.opensAt > best.closesAt - best.opensAt) best = d;
   }
