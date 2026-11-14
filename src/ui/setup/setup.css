@@ -124,10 +124,12 @@
 .setup-days-head,
 .setup-day {
   display: grid;
-  grid-template-columns: minmax(104px, 1.1fr) 1fr 1fr;
-  gap: 8px;
+  grid-template-columns: minmax(96px, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 6px;
   align-items: center;
 }
+.setup-day .input { min-width: 0; font-size: 15px; }
+.setup-day .input::-webkit-calendar-picker-indicator { display: none; }
 .setup-days-head { font: 600 12px/1 var(--font-sans); text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-3); }
 .setup-day { padding: 4px 0; border-bottom: 1px dashed var(--rule); }
 .setup-day-name span { font-weight: 600; }

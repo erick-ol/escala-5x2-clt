@@ -110,6 +110,7 @@ p { line-height: 1.5; }
   font: 500 16px/1 var(--font-sans);
   color: var(--ink);
   width: 100%;
+  min-width: 0;
 }
 .input:focus { border-color: var(--brand); outline: none; box-shadow: 0 0 0 3px var(--brand-soft); }
 .input[type='time'] { font-family: var(--font-mono); }

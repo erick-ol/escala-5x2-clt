@@ -63,8 +63,16 @@
 .export-restore .btn { width: 100%; }
 .export-empty { margin: 18px 0 0; color: var(--ink-2); }
 
-.week-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.week-picker .label { margin-right: 4px; }
+.week-picker {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.week-picker .label { grid-column: 1 / -1; margin: 0 0 2px; padding: 0; }
 .week-btn {
   min-height: var(--tap);
   padding: 0 14px;
