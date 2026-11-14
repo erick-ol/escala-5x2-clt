@@ -54,7 +54,7 @@
 .export-backup {
   margin-top: 14px;
   padding: 16px;
-  border: 2px solid var(--brand);
+  border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--brand-soft);
 }
@@ -83,7 +83,7 @@
   font: 600 15px var(--font-narrow);
   cursor: pointer;
 }
-.week-btn.is-active { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+.week-btn.is-active { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); }
 .image-export { display: flex; flex-direction: column; gap: 10px; }
 .image-export-status .hint { margin: 0; }
 .image-export .error-text { margin: 0; }

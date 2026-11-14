@@ -4,41 +4,55 @@
   Fonte do sistema; horários em fonte monoespaçada do sistema.
 */
 :root {
-  --paper: #ffffff;
-  --paper-2: #f2f2f2;
+  /* Tons de cinza: contraste suave, sem preto puro. */
+  --paper: #f7f7f6;
+  --paper-2: #efefed;
   --card: #ffffff;
-  --ink: #000000;
-  --ink-2: #333333;
-  --ink-3: #6b6b6b;
-  --rule: #d4d4d4;
-  --brand: #000000;
+  --ink: #2a2a2a;
+  --ink-2: #555555;
+  --ink-3: #8c8c8c;
+  --rule: #e4e4e2;
+  --line: #d2d2cf;
+  --brand: #3b3b3b;
   --brand-ink: #ffffff;
-  --brand-soft: #f2f2f2;
-  --off: #f2f2f2;
-  --closed: #d4d4d4;
+  --brand-soft: #efefed;
+  --off: #f1f1ef;
+  --closed: #dcdcd9;
   /* Avisos: as únicas cores do site. */
   --gap: #d9620f;
-  --gap-soft: #fdecdd;
+  --gap-soft: #fdeee2;
   --alert: #c4271f;
-  --alert-soft: #fbe3e1;
-  --ok: #1e7a3c;
-  --ok-soft: #e3f3e8;
+  --alert-soft: #fbe6e4;
+  --ok: #2b7a45;
+  --ok-soft: #e8f4ec;
   /* Turnos se distinguem pela letra, não pela cor. */
-  --shift-a: #000000;
+  --shift-a: #5a5a5a;
   --shift-a-soft: #ffffff;
-  --shift-b: #000000;
+  --shift-b: #5a5a5a;
   --shift-b-soft: #ffffff;
-  --shift-c: #000000;
+  --shift-c: #5a5a5a;
   --shift-c-soft: #ffffff;
+
+  /* Espaçamento: uma escala só, usada em todas as telas. */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 24px;
+  --s-6: 32px;
+  --s-7: 48px;
+  --gutter: 16px;
+  --header-h: 64px;
+  --actionbar-h: 72px;
 
   --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-narrow: var(--font-sans);
   --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
-  --radius: 6px;
-  --radius-sm: 4px;
+  --radius: 10px;
+  --radius-sm: 8px;
   --tap: 44px;
-  --shadow: none;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 
   font-family: var(--font-sans);
   color: var(--ink);
@@ -60,7 +74,10 @@ p { line-height: 1.5; }
 
 .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 
-.container { width: 100%; max-width: 1180px; margin: 0 auto; padding: 0 16px; }
+.container { width: 100%; max-width: 1180px; margin: 0 auto; padding: 0 var(--gutter); }
+@media (min-width: 768px) {
+  :root { --gutter: 32px; }
+}
 
 .card {
   background: var(--card);
@@ -74,7 +91,7 @@ p { line-height: 1.5; }
   min-height: var(--tap);
   padding: 0 18px;
   border-radius: var(--radius-sm);
-  border: 1.5px solid var(--ink);
+  border: 1px solid var(--line);
   background: var(--card);
   color: var(--ink);
   font: 600 15px/1 var(--font-sans);
@@ -89,14 +106,14 @@ p { line-height: 1.5; }
 .btn:active { transform: translateY(1px); }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .btn-primary { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); }
-.btn-primary:hover { background: #262626; }
+.btn-primary:hover { background: #2a2a2a; }
 .btn-danger { background: var(--alert); border-color: var(--alert); color: #fff; }
 .btn-danger:hover { background: #a3201a; }
 .btn-ghost { border-color: transparent; background: transparent; }
 .btn-ghost:hover { background: var(--paper-2); }
 .btn-sm { min-height: 36px; padding: 0 12px; font-size: 14px; }
 
-:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--ink-2); outline-offset: 2px; }
 
 /* Campos */
 .field { display: flex; flex-direction: column; gap: 6px; }
@@ -104,7 +121,7 @@ p { line-height: 1.5; }
 .input, select.input {
   min-height: var(--tap);
   padding: 0 12px;
-  border: 1.5px solid var(--rule);
+  border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   background: #fff;
   font: 500 16px/1 var(--font-sans);
