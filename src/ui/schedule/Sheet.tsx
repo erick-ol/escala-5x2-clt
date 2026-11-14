@@ -29,7 +29,14 @@ export function Sheet({ title, kicker, onClose, children, footer, tone = 'defaul
     };
   }, []);
 
+  // Um botão que some ao ser clicado (ex.: "Só este dia") joga o foco para o body; traz de volta para o painel.
+  useEffect(() => {
+    const node = ref.current;
+    if (node && (document.activeElement === null || document.activeElement === document.body)) node.focus();
+  });
+
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (ref.current && !ref.current.contains(event.target as Node)) return;
     if (event.key === 'Escape') {
       event.stopPropagation();
       onClose();

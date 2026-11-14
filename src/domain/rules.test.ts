@@ -321,4 +321,22 @@ describe('motor de regras CLT', () => {
     expect(result.b.alerts.every((x) => x.employeeId === 'b')).toBe(true);
     expect(SUNDAYS).toContain(result.b.alerts[0].day);
   });
+  test('dia de trabalho com turno inexistente gera alerta em vez de contar 0h em silêncio', () => {
+    const cells = withCells(std(), { 0: { status: 'work', shiftId: 'removido' } });
+    const list = ofKind(alerts(cells, { employee: { shiftId: 'manha' } }), 'no-hours');
+    expect(list).toHaveLength(1);
+    expect(list[0].day).toBe(0);
+  });
+
+  test('intervalo acima de 2h numa jornada de mais de 6h gera alerta; 2h exatas não', () => {
+    expect(ofKind(alerts(withCells(std(), { 0: at(h(8), h(18), 150) })), 'break')).toHaveLength(1);
+    expect(ofKind(alerts(withCells(std(), { 0: at(h(8), h(17), 120) })), 'break')).toHaveLength(0);
+  });
+
+  test('rodízio de domingo é checado pelas células mesmo com o domingo marcado como fechado na configuração', () => {
+    const allSundays = withCells(std(), { 6: W, 13: W, 20: W, 4: O, 11: O, 18: O });
+    const days = baseConfig.days.map((d, w) => (w === 6 ? { ...d, open: false } : d));
+    expect(ofKind(alerts(allSundays, { config: { days } }), 'sunday-rotation')).toHaveLength(1);
+    expect(ofKind(alerts(cycle([W, W, W, W, W, O, C], [W, W, W, W, W, O, C], [W, W, W, W, W, O, C]), { config: { days } }), 'sunday-rotation')).toHaveLength(0);
+  });
 });

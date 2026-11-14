@@ -170,7 +170,7 @@ export function TeamStep() {
                       value={hours.breakMinutes}
                       onChange={(ev) => {
                         const v = Number(ev.target.value);
-                        if (ev.target.value !== '' && Number.isFinite(v) && v >= 0) {
+                        if (ev.target.value !== '' && Number.isFinite(v) && v >= 0 && v <= 600) {
                           setCustom(e, { breakMinutes: Math.round(v) });
                         }
                       }}

@@ -1,6 +1,6 @@
 import { exampleDocument } from '../domain/example';
 import { CYCLE_DAYS } from '../domain/types';
-import { createAppStore, defaultRow, probeStorage, STORAGE_KEY, type KeyValueStorage } from './store';
+import { createAppStore, defaultRow, probeStorage, STORAGE_KEY, UNREADABLE_KEY, type KeyValueStorage } from './store';
 
 function memoryStorage(): KeyValueStorage & { data: Map<string, string> } {
   const data = new Map<string, string>();
@@ -57,11 +57,41 @@ describe('store', () => {
     expect(s.getState().storageAvailable).toBe(false);
   });
 
-  test('dado salvo corrompido é ignorado', () => {
+  test('dado salvo ilegível é preservado numa cópia antes de ser substituído', () => {
     const storage = memoryStorage();
-    storage.setItem(STORAGE_KEY, '{"document": {"schemaVersion": 1}}');
+    const raw = '{"document": {"schemaVersion": 1}}';
+    storage.setItem(STORAGE_KEY, raw);
     const s = createAppStore(storage, now);
     expect(s.getState().hasSavedData).toBe(false);
+    expect(s.getState().recoveredUnreadable).toBe(true);
+    s.getState().loadExample();
+    expect(storage.data.get(UNREADABLE_KEY)).toBe(raw);
+  });
+
+  test('gravação de outra aba recarrega o documento sem gravar de volta', () => {
+    const storage = memoryStorage();
+    const s = createAppStore(storage, now);
+    const other = createAppStore(memoryStorage(), now);
+    other.getState().loadExample();
+    const newValue = JSON.stringify({ document: other.getState().document, lastBackupAt: null });
+    let writes = 0;
+    const setItem = storage.setItem;
+    storage.setItem = (k, v) => {
+      writes++;
+      setItem(k, v);
+    };
+    window.dispatchEvent(new StorageEvent('storage', { key: STORAGE_KEY, newValue }));
+    expect(s.getState().document.employees).toHaveLength(6);
+    expect(writes).toBe(0);
+  });
+
+  test('restaurar um documento inconsistente o reconcilia (linha que falta é criada)', () => {
+    const s = createAppStore(memoryStorage(), now);
+    const doc = exampleDocument(now());
+    const schedule = Object.fromEntries(doc.employees.map((e) => [e.id, defaultRow(doc.config)]));
+    delete schedule.pedro;
+    s.getState().replaceDocument({ ...doc, schedule });
+    expect(s.getState().document.schedule?.pedro).toHaveLength(CYCLE_DAYS);
   });
 
   test('remover funcionário apaga a linha e as marcações "coberto por" dele', () => {

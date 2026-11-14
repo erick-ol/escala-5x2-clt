@@ -106,6 +106,8 @@ export function App() {
         danger
         onCancel={() => {
           setConfirmRegen(false);
+          // Ajusta a escala à configuração nova (dias abertos/fechados, turnos removidos) antes de encaixar quem chegou.
+          appStore.getState().replaceDocument(appStore.getState().document);
           fitAddedEmployees(idsBefore);
           showSchedule(null);
         }}
@@ -114,7 +116,10 @@ export function App() {
           showSchedule(runGenerate());
         }}
       >
-        <p>Some: trocas de folga e marcações de cobertura. Fica: os horários do cadastro de cada pessoa.</p>
+        <p>
+          Some: trocas de folga, horários ajustados só num dia e marcações de cobertura. Fica: os horários do cadastro
+          de cada pessoa.
+        </p>
         <p>Se mantiver a escala atual, quem entrou na equipe agora é encaixado sem mexer nos demais.</p>
       </ConfirmDialog>
     </div>

@@ -190,6 +190,14 @@ describe('ExportPanel', () => {
     expect(navigator.share).toHaveBeenCalledTimes(1);
   });
 
+  it('quando a pessoa cancela o compartilhamento (AbortError), não baixa nada', async () => {
+    setShare(true, () => Promise.reject(new DOMException('cancelado', 'AbortError')));
+    await renderReady();
+    await userEvent.click(screen.getByRole('button', { name: 'Compartilhar' }));
+    await waitFor(() => expect(navigator.share).toHaveBeenCalledTimes(1));
+    expect(anchorClick).not.toHaveBeenCalled();
+  });
+
   it('Esc fecha, o foco começa no painel e volta para quem abriu', async () => {
     const opener = document.createElement('button');
     document.body.appendChild(opener);

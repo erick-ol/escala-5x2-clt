@@ -10,10 +10,13 @@ import {
   type Schedule,
   type StoreConfig,
 } from '../domain/types';
+import { reconcileDocument } from '../domain/reconcile';
 import { weekdayOf } from '../domain/time';
 import { parseDocument } from './schema';
 
 export const STORAGE_KEY = 'escala-5x2-clt:v1';
+/** Cópia do dado salvo que não pôde ser lido, preservada antes de qualquer nova gravação. */
+export const UNREADABLE_KEY = `${STORAGE_KEY}:ilegivel`;
 
 export interface KeyValueStorage {
   getItem(key: string): string | null;
@@ -39,6 +42,8 @@ export interface AppState {
   document: AppDocument;
   /** false quando nada está sendo salvo no aparelho (R19). */
   storageAvailable: boolean;
+  /** true quando havia uma escala salva que não pôde ser lida (a cópia fica em UNREADABLE_KEY). */
+  recoveredUnreadable: boolean;
   /** true quando já existe uma configuração salva (não é a primeira visita). */
   hasSavedData: boolean;
   lastBackupAt: string | null;
@@ -77,24 +82,43 @@ export function createAppStore(storage: KeyValueStorage | null, now: () => Date 
   let initial: AppDocument = emptyDocument(now());
   let hasSavedData = false;
   let lastBackupAt: string | null = null;
+  let recoveredUnreadable = false;
+
+  const readEnvelope = (raw: string): { document: AppDocument; lastBackupAt: string | null } | null => {
+    try {
+      const parsed = JSON.parse(raw) as Partial<PersistedEnvelope>;
+      const result = parseDocument(parsed.document);
+      if (!result.ok) return null;
+      return {
+        document: reconcileDocument(result.document),
+        lastBackupAt: typeof parsed.lastBackupAt === 'string' ? parsed.lastBackupAt : null,
+      };
+    } catch {
+      return null;
+    }
+  };
 
   if (storage) {
     try {
       const raw = storage.getItem(STORAGE_KEY);
       if (raw) {
-        const parsed = JSON.parse(raw) as Partial<PersistedEnvelope>;
-        const result = parseDocument(parsed.document);
-        if (result.ok) {
-          initial = result.document;
+        const envelope = readEnvelope(raw);
+        if (envelope) {
+          initial = envelope.document;
           hasSavedData = true;
-          lastBackupAt = typeof parsed.lastBackupAt === 'string' ? parsed.lastBackupAt : null;
+          lastBackupAt = envelope.lastBackupAt;
+        } else {
+          // Dado ilegível: guarda uma cópia antes que a próxima gravação o substitua.
+          storage.setItem(UNREADABLE_KEY, raw);
+          recoveredUnreadable = true;
         }
       }
     } catch {
-      // Dado corrompido: começa vazio, sem apagar nada até a próxima gravação.
+      // Sem acesso ao dado salvo: começa vazio.
     }
   }
 
+  let remoteUpdate = false;
   const store = createStore<AppState>()((set, get) => {
     const setDocument = (next: AppDocument) => set({ document: next, hasSavedData: true });
     const doc = () => get().document;
@@ -104,8 +128,9 @@ export function createAppStore(storage: KeyValueStorage | null, now: () => Date 
       storageAvailable: storage !== null,
       hasSavedData,
       lastBackupAt,
+      recoveredUnreadable,
 
-      replaceDocument: (document) => setDocument(document),
+      replaceDocument: (document) => setDocument(reconcileDocument(document)),
       loadExample: () => setDocument(exampleDocument(now())),
       resetToEmpty: () => set({ document: emptyDocument(now()), hasSavedData: false }),
 
@@ -162,6 +187,7 @@ export function createAppStore(storage: KeyValueStorage | null, now: () => Date 
 
   if (storage) {
     store.subscribe((state, prev) => {
+      if (remoteUpdate) return;
       if (state.document === prev.document && state.lastBackupAt === prev.lastBackupAt) return;
       try {
         if (!state.hasSavedData) {
@@ -172,6 +198,21 @@ export function createAppStore(storage: KeyValueStorage | null, now: () => Date 
         storage.setItem(STORAGE_KEY, JSON.stringify(envelope));
       } catch {
         store.setState({ storageAvailable: false });
+      }
+    });
+  }
+
+  // Outra aba gravou: recarrega sem gravar de volta, para uma aba não apagar a edição da outra.
+  if (storage && typeof window !== 'undefined') {
+    window.addEventListener('storage', (event) => {
+      if (event.key !== STORAGE_KEY || event.newValue === null) return;
+      const envelope = readEnvelope(event.newValue);
+      if (!envelope) return;
+      remoteUpdate = true;
+      try {
+        store.setState({ document: envelope.document, lastBackupAt: envelope.lastBackupAt, hasSavedData: true });
+      } finally {
+        remoteUpdate = false;
       }
     });
   }

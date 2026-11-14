@@ -120,7 +120,7 @@ export function ShiftsStep() {
                       value={shift.breakMinutes}
                       onChange={(e) => {
                         const v = Number(e.target.value);
-                        if (e.target.value !== '' && Number.isFinite(v) && v >= 0) {
+                        if (e.target.value !== '' && Number.isFinite(v) && v >= 0 && v <= 600) {
                           patchShift(shift.id, { breakMinutes: Math.round(v) });
                         }
                       }}

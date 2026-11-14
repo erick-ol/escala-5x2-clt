@@ -30,5 +30,7 @@ export const SUNDAY_EVERY_WEEKS_WOMAN = 2;
 export const LEGAL_SOURCE_URL = 'https://www.planalto.gov.br/ccivil_03/constituicao/emendas/emc/';
 
 export function defaultRegime(today: Date = new Date()): Regime {
-  return today.toISOString().slice(0, 10) >= LEGAL_DATES.switch40h ? '40h' : '42h';
+  // Data local (não UTC), para a virada acontecer à meia-noite no fuso de quem usa.
+  const local = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  return local >= LEGAL_DATES.switch40h ? '40h' : '42h';
 }

@@ -27,7 +27,8 @@ export type AlertKind =
   | 'break'
   | 'intershift-rest'
   | 'weekly-rest'
-  | 'sunday-rotation';
+  | 'sunday-rotation'
+  | 'no-hours';
 
 export interface LegalAlert {
   kind: AlertKind;
@@ -83,17 +84,22 @@ function toJornada(day: DayIndex, hours: WorkHours): Jornada {
   return { day, hours, start, end: start + grossMinutes(hours), worked: workedMinutes(hours) };
 }
 
-function buildDays(input: RulesInput, employee: Employee): { blocks: (DayBlock | null)[]; worked: boolean[] } {
+function buildDays(
+  input: RulesInput,
+  employee: Employee,
+): { blocks: (DayBlock | null)[]; worked: boolean[]; missingHours: DayIndex[] } {
   const cells = input.schedule[employee.id] ?? [];
   const extras = (input.extraShifts ?? []).filter((x) => x.employeeId === employee.id);
   const blocks: (DayBlock | null)[] = [];
   const worked: boolean[] = [];
+  const missingHours: DayIndex[] = [];
   for (let day = 0; day < CYCLE_DAYS; day++) {
     const cell = cells[day];
     const jornadas: Jornada[] = [];
     if (cell?.status === 'work') {
       const hours = effectiveHours(input.config, employee, cell);
       if (hours) jornadas.push(toJornada(day, hours));
+      else missingHours.push(day);
     }
     for (const x of extras) if (x.day === day) jornadas.push(toJornada(day, x.hours));
     worked.push(cell?.status === 'work' || jornadas.length > 0);
@@ -118,8 +124,10 @@ function buildDays(input: RulesInput, employee: Employee): { blocks: (DayBlock |
       jornadas,
     });
   }
-  return { blocks, worked };
+  return { blocks, worked, missingHours };
 }
+
+const MAX_BREAK_MINUTES = 120;
 
 /** KTD17: acima de 6h trabalhadas, 1h de intervalo; acima de 4h, 15min. */
 function requiredBreak(worked: number): number {
@@ -144,9 +152,14 @@ export function evaluateEmployee(input: RulesInput, employeeId: string): Employe
 
   const { config } = input;
   const cells = input.schedule[employeeId] ?? [];
-  const { blocks, worked } = buildDays(input, employee);
+  const { blocks, worked, missingHours } = buildDays(input, employee);
   const alert = (kind: AlertKind, day: DayIndex | null, week: number | null, message: string) =>
     report.alerts.push({ kind, employeeId, day, week, message });
+
+  // Dia de trabalho sem turno válido: as horas não podem ser conferidas (turno removido, dado inconsistente).
+  for (const day of missingHours) {
+    alert('no-hours', day, weekOf(day), 'Dia de trabalho sem turno válido: escolha o turno ou o horário para conferir as regras.');
+  }
 
   // Horas por semana (a jornada pertence ao dia em que começa).
   for (const b of blocks) if (b) report.weeklyMinutes[weekOf(b.day)] += b.worked;
@@ -201,6 +214,15 @@ export function evaluateEmployee(input: RulesInput, employeeId: string): Employe
         ? [{ worked: b.worked, pause: b.pause }]
         : [...b.jornadas.map((j) => ({ worked: j.worked, pause: j.hours.breakMinutes })), { worked: b.worked, pause: b.pause }];
     const failed = checks.find((c) => c.pause < requiredBreak(c.worked));
+    const tooLong = b.jornadas.find((j) => j.worked > 6 * 60 && j.hours.breakMinutes > MAX_BREAK_MINUTES);
+    if (tooLong) {
+      alert(
+        'break',
+        b.day,
+        weekOf(b.day),
+        `Intervalo de ${formatDuration(tooLong.hours.breakMinutes)} (máximo de 2h sem acordo ou convenção coletiva)`,
+      );
+    }
     if (failed) {
       alert(
         'break',
@@ -254,7 +276,7 @@ export function evaluateEmployee(input: RulesInput, employeeId: string): Employe
   }
 
   // Rodízio de domingo (R10, R10a). Domingo de loja fechada é descanso para todos (KTD14).
-  if (config.days[SUNDAY]?.open !== false) {
+  {
     const sundays = Array.from({ length: WEEKS }, (_, w) => w * DAYS_PER_WEEK + SUNDAY);
     const workedSunday = sundays.map((d) => worked[d]);
     if (employee.isWoman) {

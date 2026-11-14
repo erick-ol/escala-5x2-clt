@@ -86,8 +86,14 @@ function reduceSuggestion(input: SuggestionInput, item: SummaryItem, before: num
   const after = countGaps(reduced, input.employees, input.schedule);
   if (after >= before) return null;
   const n = names(config, item.roleId, item.shiftId);
-  const target = Math.max(0, Math.min(...item.weekdays.map((w) => minimum.perWeekday[w])) - 1);
-  const label = target === 0 ? `Aceitar ficar sem ${n.role}` : `Reduzir para ${target} ${n.role}`;
+  const targets = item.weekdays.map((w) => Math.max(0, minimum.perWeekday[w] - 1));
+  const allZero = targets.every((t) => t === 0);
+  const sameTarget = targets.every((t) => t === targets[0]);
+  const label = allZero
+    ? `Aceitar ficar sem ${n.role}`
+    : sameTarget
+      ? `Reduzir para ${targets[0]} ${n.role}`
+      : `Reduzir em 1 o mínimo de ${n.role}`;
   return {
     kind: 'reduce-minimum',
     text: `${label} ${n.shift} em ${weekdaysPhrase(item.weekdays)}`,

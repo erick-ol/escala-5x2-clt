@@ -39,6 +39,7 @@ export function ExportPanel({ onClose }: ExportPanelProps) {
   }, []);
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (panelRef.current && !panelRef.current.contains(event.target as Node)) return;
     if (event.key === 'Escape') {
       event.stopPropagation();
       onClose();
