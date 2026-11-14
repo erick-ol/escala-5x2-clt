@@ -2,6 +2,7 @@ import { validSecondary, type FlexCover } from './coverage';
 import { MINUTES_PER_DAY, dayShifts, effectiveHours, effectiveShiftId, grossMinutes, requiredCount, weekdayOf } from './time';
 import {
   CYCLE_DAYS,
+  DEFAULT_LUNCH_FROM,
   type DayIndex,
   type Employee,
   type ExtraShift,
@@ -320,20 +321,39 @@ class DayState {
   }
 }
 
+/** Horário preferido para o almoço começar (config.lunchFrom; 11:30 em dados antigos). */
+export function lunchFromOf(config: StoreConfig): Minutes {
+  const v = config.lunchFrom;
+  return v !== undefined && Number.isFinite(v) && v >= 0 && v < MINUTES_PER_DAY ? v : DEFAULT_LUNCH_FROM;
+}
+
 /**
  * Escolhe o início do almoço de uma jornada sem horário informado: grade de 15min entre
- * entrada + 2h e entrada + 6h, terminando antes da saída. Critérios, em ordem: falta que o almoço
+ * entrada + 2h e entrada + 6h (regra das 6h), terminando antes da saída.
+ *
+ * Preferência forte pelo horário da loja (`lunchFrom`, na mesma base do dia da jornada): se algum
+ * início legal é ≥ `lunchFrom`, só esses entram na disputa. Critérios, em ordem: falta que o almoço
  * acrescenta (pessoa × minuto, já contando quem cobre pela segunda área, inclusive a própria pessoa
  * deixando de cobrir); minutos de sobreposição com outros almoços da função; distância do meio da
  * jornada; o mais cedo.
+ *
+ * Sem nenhum início legal ≥ `lunchFrom` (ex.: 06:00–10:00 com intervalo), todos os inícios legais
+ * entram, com os mesmos dois primeiros critérios e, no lugar do meio da jornada, a distância até
+ * `lunchFrom` (o mais tarde possível). Jornadas da noite e da madrugada começam depois de `lunchFrom`
+ * no próprio dia, então a preferência não restringe nada nelas (não faz sentido "almoço a partir de
+ * 11:30" numa jornada 22:00–06:00).
  */
-function chooseLunch(job: Job, index: number, state: DayState): Minutes {
+function chooseLunch(job: Job, index: number, state: DayState, lunchFrom: Minutes): Minutes {
   const b = job.hours.breakMinutes;
   const role = state.idx.get(job.roleId)!;
   const lunchArr = state.lunch[role];
-  const first = Math.ceil((job.start + LUNCH_MIN_OFFSET) / GRID) * GRID;
+  const legalFirst = Math.ceil((job.start + LUNCH_MIN_OFFSET) / GRID) * GRID;
   const last = Math.min(job.start + LUNCH_MAX_OFFSET, job.end - b - 1);
-  const ideal = job.start + (job.end - job.start) / 2 - b / 2;
+  // Primeiro início da grade ≥ lunchFrom; se passar do último início legal, cai no fallback.
+  const preferredFirst = Math.max(legalFirst, Math.ceil(lunchFrom / GRID) * GRID);
+  const preferred = preferredFirst <= last;
+  const first = preferred ? preferredFirst : legalFirst;
+  const ideal = preferred ? job.start + (job.end - job.start) / 2 - b / 2 : lunchFrom;
   // Falta que este almoço acrescenta em cada minuto da janela possível (não depende do início escolhido).
   const lo = Math.max(0, first);
   const hi = Math.min(SPAN, last + b);
@@ -366,6 +386,7 @@ function chooseLunch(job: Job, index: number, state: DayState): Minutes {
 
 export function planLunches(input: LunchInput): LunchPlan {
   const ctx = makeContext(input);
+  const lunchFrom = lunchFromOf(input.config);
   const plan: LunchPlan = {};
   const row = (key: string) => (plan[key] ??= Array.from({ length: CYCLE_DAYS }, () => null));
   for (const e of input.employees) row(e.id);
@@ -391,7 +412,7 @@ export function planLunches(input: LunchInput): LunchPlan {
     planned.sort((a, b) => jobs[a].start - jobs[b].start || jobs[a].end - jobs[b].end);
     for (const i of planned) {
       const j = jobs[i];
-      const s = chooseLunch(j, i, state);
+      const s = chooseLunch(j, i, state, lunchFrom);
       row(j.key)[day] = s;
       state.setLunch(i, j.roleId, s, s + j.hours.breakMinutes);
     }

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { addDays, isISODate, localToday, sundayOnOrBefore, weekdayOfDate } from '../domain/dates';
-import { CYCLE_DAYS, SCHEMA_VERSION, type AppDocument } from '../domain/types';
+import { CYCLE_DAYS, DEFAULT_LUNCH_FROM, SCHEMA_VERSION, type AppDocument } from '../domain/types';
 
 const minutes = z.number().int().min(0).max(1439);
 
@@ -34,6 +34,8 @@ const config = z.object({
   minimums: z.array(minimum),
   regime: z.enum(['42h', '40h']),
   offPattern: z.enum(['together', 'flexible']).default('together'),
+  /** Ausente em documentos e backups antigos: 11:30. */
+  lunchFrom: minutes.default(DEFAULT_LUNCH_FROM),
 });
 
 const employee = z.object({

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { joinPt } from '../../domain/coverage';
 import { defaultBreakFor, formatDuration, formatTime, isSingleShiftDay, workedMinutes } from '../../domain/time';
-import { WEEKDAY_NAMES, WEEK_ORDER, type Shift } from '../../domain/types';
+import { DEFAULT_LUNCH_FROM, WEEKDAY_NAMES, WEEK_ORDER, type Shift } from '../../domain/types';
 import { useAppStore } from '../../state/store';
 import { longestOpenDay, pruneMinimums, randomId, suggestShifts } from './setupLogic';
 import { TimeInput } from './TimeInput';
@@ -159,6 +159,21 @@ export function ShiftsStep() {
           Adicionar turno
         </button>
       )}
+
+      <div className="setup-lunch card">
+        <div className="field">
+          <label htmlFor="lunch-from">Almoço a partir de</label>
+          <TimeInput
+            id="lunch-from"
+            label="Almoço a partir de"
+            value={config.lunchFrom ?? DEFAULT_LUNCH_FROM}
+            onChange={(v) => updateConfig({ lunchFrom: v })}
+          />
+        </div>
+        <p className="hint">
+          O site planeja o almoço de cada pessoa a partir desse horário, sem passar de 6h de trabalho antes da pausa.
+        </p>
+      </div>
     </section>
   );
 }

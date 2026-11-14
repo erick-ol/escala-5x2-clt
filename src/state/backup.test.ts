@@ -52,6 +52,24 @@ describe('backup antigo sem marcações de almoço', () => {
   });
 });
 
+describe('documento antigo sem "Almoço a partir de"', () => {
+  test('lê com 11:30', () => {
+    const doc = exampleDocument(new Date('2026-11-14'));
+    const { lunchFrom: _drop, ...config } = doc.config;
+    void _drop;
+    const result = parseBackup(JSON.stringify({ app: 'escala-5x2-clt', ...doc, config }));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.document.config.lunchFrom).toBe(11 * 60 + 30);
+  });
+
+  test('mantém o horário gravado', () => {
+    const doc = exampleDocument(new Date('2026-11-14'));
+    const result = parseBackup(JSON.stringify({ app: 'escala-5x2-clt', ...doc, config: { ...doc.config, lunchFrom: 12 * 60 } }));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.document.config.lunchFrom).toBe(12 * 60);
+  });
+});
+
 describe('documento da versão 1 (semana de segunda a domingo)', () => {
   /** Weekday (0 = segunda … 6 = domingo) de um dia do ciclo na versão 1, em que o dia 0 era uma segunda. */
   const v1Weekday = (day: number) => day % 7;

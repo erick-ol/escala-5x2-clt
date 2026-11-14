@@ -28,7 +28,7 @@ import {
   type WorkHours,
 } from '../../domain/types';
 import { slugify } from './download';
-import { displayStoreName, formatRange } from './exportModel';
+import { displayStoreName, formatRange, singleShiftInitial } from './exportModel';
 
 /**
  * Escala individual (para entregar a cada pessoa): só os próprios horários, almoço e folgas.
@@ -52,6 +52,14 @@ export interface PersonalDay {
   extras: string[];
   /** Data fora do mês exportado (sai apagada). */
   outside?: boolean;
+  /** Data real (só no mês): o calendário mostra o número do dia. */
+  date?: ISODate;
+  /** Dia de trabalho, em partes, para o calendário: "U" ou "Tarde" (turno fora do cadastro). */
+  shiftTag?: string;
+  /** "06:30–14:00" */
+  range?: string;
+  /** "almoço 11:30–12:30" */
+  lunch?: string;
 }
 
 export interface PersonalWeek {
@@ -76,6 +84,8 @@ export interface PersonalModel {
   periodLabel: string;
   scope: PersonalScope['kind'];
   weeks: PersonalWeek[];
+  /** Mês exportado (só no escopo do mês). */
+  month?: { year: number; month: number };
   /** "escala-andreza-dezembro-2026.png" */
   fileName: string;
   /** "Escala de Andreza — Dezembro de 2026" */
@@ -94,9 +104,14 @@ interface Source {
   holiday(day: DayIndex): boolean;
 }
 
-function lunchText(hours: WorkHours, start: number | null | undefined): string {
+function lunchOnly(hours: WorkHours, start: number | null | undefined): string {
   if (hours.breakMinutes <= 0 || start === null || start === undefined) return '';
-  return ` · almoço ${formatTime(start)}–${formatTime(start + hours.breakMinutes)}`;
+  return `almoço ${formatTime(start)}–${formatTime(start + hours.breakMinutes)}`;
+}
+
+function lunchText(hours: WorkHours, start: number | null | undefined): string {
+  const lunch = lunchOnly(hours, start);
+  return lunch ? ` · ${lunch}` : '';
 }
 
 function buildDay(
@@ -107,6 +122,8 @@ function buildDay(
   label: string,
   key: string,
   outside: boolean,
+  singleTag: string,
+  date?: ISODate,
 ): { day: PersonalDay; minutes: number } {
   const { config } = src;
   const cell = src.cells[e.id]?.[day];
@@ -123,7 +140,7 @@ function buildDay(
       return `Cobre ${role}${shiftName ? ` · ${shiftName}` : ''} ${formatRange(x.hours)}${lunch}`;
     });
 
-  const base = { key, label, extras, ...(outside ? { outside: true } : {}) };
+  const base = { key, label, extras, ...(outside ? { outside: true } : {}), ...(date ? { date } : {}) };
   if (src.holiday(day)) return { day: { ...base, kind: 'holiday', text: 'Feriado' }, minutes };
   if (!cell) return { day: { ...base, kind: 'none', text: '—' }, minutes };
   if (cell.status === 'closed') return { day: { ...base, kind: 'closed', text: 'Loja fechada' }, minutes };
@@ -139,10 +156,14 @@ function buildDay(
     : shiftId !== e.shiftId
       ? `${findShift(config, shiftId)?.name ?? ''} `.trimStart()
       : '';
-  const text = `${prefix}${formatRange(hours)}${lunchText(hours, src.lunchPlan[e.id]?.[day])}`;
+  const range = formatRange(hours);
+  const lunch = lunchOnly(hours, src.lunchPlan[e.id]?.[day]);
+  const text = `${prefix}${range}${lunch ? ` · ${lunch}` : ''}`;
+  const shiftTag = isVirtualShiftId(shiftId) ? singleTag : prefix.trim();
   const flex = src.coverage.flex.find((f) => f.employeeId === e.id && f.day === day);
   const note = flex ? `cobre ${lower(roleName.get(flex.roleId) ?? '')}` : undefined;
-  return { day: { ...base, kind: 'work', text, ...(note ? { note } : {}) }, minutes };
+  const parts = { range, ...(lunch ? { lunch } : {}), ...(shiftTag ? { shiftTag } : {}) };
+  return { day: { ...base, kind: 'work', text, ...parts, ...(note ? { note } : {}) }, minutes };
 }
 
 function header(document: AppDocument, e: Employee, roleName: Map<string, string>) {
@@ -175,6 +196,7 @@ function finish(
     ...header(document, e, roleName),
     periodLabel,
     scope: scope.kind,
+    ...(scope.kind === 'month' ? { month: { year: scope.year, month: scope.month } } : {}),
     weeks,
     fileName: `escala-${slugify(name)}-${period}.png`,
     shareTitle: `Escala de ${name} — ${periodLabel}`,
@@ -189,12 +211,14 @@ function cycleModels(document: AppDocument): PersonalModel[] {
   const src: Source = { config, cells: schedule, coverage, lunchPlan, holiday: () => false };
   const roleName = new Map(config.roles.map((r) => [r.id, r.name]));
   const periodLabel = `Ciclo de ${WEEKS} semanas a partir de ${formatFullDate(document.calendar.cycleStart)}`;
+  const singleTag = singleShiftInitial(config.shifts);
   return employees.map((e) => {
     const weeks = Array.from({ length: WEEKS }, (_, w): PersonalWeek => {
       let minutes = 0;
       const days = Array.from({ length: DAYS_PER_WEEK }, (_, i) => {
         const d = w * DAYS_PER_WEEK + i;
-        const r = buildDay(src, e, roleName, d, `Semana ${w + 1} · ${WEEKDAY_SHORT[weekdayOf(d)]}`, `c${d}`, false);
+        const label = `Semana ${w + 1} · ${WEEKDAY_SHORT[weekdayOf(d)]}`;
+        const r = buildDay(src, e, roleName, d, label, `c${d}`, false, singleTag);
         minutes += r.minutes;
         return r.day;
       });
@@ -209,6 +233,7 @@ function monthModels(document: AppDocument, year: number, month: number): Person
   const projected = monthWeeks(year, month).map((sunday) => projectWeek(document, sunday)!);
   const roleName = new Map(document.config.roles.map((r) => [r.id, r.name]));
   const periodLabel = monthLabel(year, month);
+  const singleTag = singleShiftInitial(document.config.shifts);
   const sources = projected.map(
     (w): Source => ({
       config: w.doc.config,
@@ -224,7 +249,7 @@ function monthModels(document: AppDocument, year: number, month: number): Person
       const days = w.dates.map((date: ISODate, i) => {
         const d = w.firstDay + i;
         const label = `${COLUMN_SHORT[i]} ${formatDayMonth(date)}`;
-        const r = buildDay(sources[wi], e, roleName, d, label, date, !isInMonth(date, year, month));
+        const r = buildDay(sources[wi], e, roleName, d, label, date, !isInMonth(date, year, month), singleTag, date);
         minutes += r.minutes;
         return r.day;
       });

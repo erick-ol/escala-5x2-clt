@@ -35,11 +35,13 @@ function allWork(employees: Employee[], cell: Cell = { status: 'work' }): Schedu
   return s;
 }
 
-function exampleInput(): LunchInput {
+/** Mercado do exemplo com a escala gerada. `lunchFrom` troca o "Almoço a partir de" (0 = sem preferência). */
+function exampleInput(lunchFrom?: number): LunchInput {
   const doc = exampleDocument(new Date('2026-11-14'));
   const schedule = generateSchedule({ config: doc.config, employees: doc.employees });
   const { flex, extraShifts } = computeCoverage({ config: doc.config, employees: doc.employees, schedule, marks: [] });
-  return { config: doc.config, employees: doc.employees, schedule, flex, extraShifts };
+  const config = lunchFrom === undefined ? doc.config : { ...doc.config, lunchFrom };
+  return { config, employees: doc.employees, schedule, flex, extraShifts };
 }
 
 describe('planLunches', () => {
@@ -165,8 +167,10 @@ describe('findLunchGaps', () => {
     expect(findLunchGaps(input, planLunches(input))).toEqual([]);
   });
 
-  it('mercado do exemplo: sem buraco de caixa de manhã quando os dois caixas da manhã trabalham', () => {
-    const input = exampleInput();
+  // Sem preferência de horário (lunchFrom 0): com "a partir de 11:30", três almoços de 1h da manhã não cabem
+  // entre 11:30 e 13:30 e o buraco vira inevitável (ver "horário preferido do almoço").
+  it('mercado do exemplo sem preferência de horário: sem buraco de caixa de manhã quando os dois caixas da manhã trabalham', () => {
+    const input = exampleInput(0);
     const plan = planLunches(input);
     const gaps = findLunchGaps(input, plan);
     const flexed = (id: string, d: number) => input.flex!.some((f) => f.employeeId === id && f.day === d);
@@ -285,8 +289,9 @@ describe('cobertura de almoço pela segunda área', () => {
     minimums: baseConfig().minimums.filter((m) => m.shiftId === 'manha'),
   });
 
-  it('mercado do exemplo: Andreza cobre o almoço da Rosa quando Andreza e Richard trabalham de manhã', () => {
-    const input = exampleInput();
+  // Sem preferência de horário (lunchFrom 0); com 11:30, ver "horário preferido do almoço".
+  it('mercado do exemplo sem preferência de horário: Andreza cobre o almoço da Rosa quando Andreza e Richard trabalham de manhã', () => {
+    const input = exampleInput(0);
     const plan = planLunches(input);
     const gaps = findLunchGaps(input, plan);
     const flexed = (id: string, d: number) => input.flex!.some((f) => f.employeeId === id && f.day === d);
@@ -315,9 +320,10 @@ describe('cobertura de almoço pela segunda área', () => {
     expect(presenceForDay(input, plan, 0).find((b) => b.employeeId === 'andreza')!.lunchCovers).toBeUndefined();
   });
 
+  // Sem preferência de horário (lunchFrom 0): a partir de 11:30, os três almoços não cabem sem sobrepor.
   it('o planejador não põe o almoço de quem cobre (nem do colega que garante a sobra) junto com o da Rosa', () => {
     const employees = morningTeam();
-    const input: LunchInput = { config: onlyMorning(), employees, schedule: allWork(employees) };
+    const input: LunchInput = { config: { ...onlyMorning(), lunchFrom: 0 }, employees, schedule: allWork(employees) };
     const plan = planLunches(input);
     for (let d = 0; d < CYCLE_DAYS; d++) {
       const rosa = plan.rosa[d]!;
@@ -351,5 +357,131 @@ describe('cobertura de almoço pela segunda área', () => {
       const b = gaps[i];
       if (a.day === b.day && a.roleId === b.roleId) expect(b.from).toBeGreaterThan(a.to);
     }
+  });
+});
+
+describe('horário preferido do almoço (lunchFrom)', () => {
+  /** Algum início da grade de 15min dentro da janela legal fica em ≥ `from`? */
+  const hasLegalAfter = (start: number, end: number, b: number, from: number) => {
+    const first = Math.ceil((start + LUNCH_MIN_OFFSET) / 15) * 15;
+    const last = Math.min(start + LUNCH_MAX_OFFSET, end - b - 1);
+    return Math.max(first, Math.ceil(from / 15) * 15) <= last;
+  };
+
+  it('o exemplo vem com 11:30', () => {
+    expect(exampleDocument(new Date('2026-11-14')).config.lunchFrom).toBe(h(11, 30));
+  });
+
+  it('mercado do exemplo: todo almoço começa a partir de 11:30, salvo quando a regra das 6h não deixa', () => {
+    const input = exampleInput();
+    const plan = planLunches(input);
+    let checked = 0;
+    for (const e of input.employees) {
+      for (let d = 0; d < CYCLE_DAYS; d++) {
+        const cell = input.schedule[e.id][d];
+        if (cell.status !== 'work') continue;
+        const hours = effectiveHours(input.config, e, cell, d)!;
+        const lunch = plan[e.id][d]!;
+        const end = hours.start + grossMinutes(hours);
+        expect(lunch).toBeGreaterThanOrEqual(hours.start + LUNCH_MIN_OFFSET);
+        expect(lunch).toBeLessThanOrEqual(hours.start + LUNCH_MAX_OFFSET);
+        expect(lunch + hours.breakMinutes).toBeLessThan(end);
+        if (hasLegalAfter(hours.start, end, hours.breakMinutes, h(11, 30))) {
+          checked++;
+          expect(lunch).toBeGreaterThanOrEqual(h(11, 30));
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
+  });
+
+  it('Rosa (entrada 05:45) almoça entre 11:30 e 11:45; a manhã das 06:30, entre 11:30 e 12:30', () => {
+    const input = exampleInput();
+    const plan = planLunches(input);
+    let rosa = 0;
+    let morning = 0;
+    for (let d = 0; d < CYCLE_DAYS; d++) {
+      if (isSingleShiftDay(input.config, weekdayOf(d))) continue;
+      if (input.schedule.rosa[d].status === 'work') {
+        rosa++;
+        expect(plan.rosa[d]).toBeGreaterThanOrEqual(h(11, 30));
+        expect(plan.rosa[d]).toBeLessThanOrEqual(h(11, 45));
+      }
+      for (const id of ['andreza', 'richard']) {
+        if (input.schedule[id][d].status !== 'work') continue;
+        morning++;
+        expect(plan[id][d]).toBeGreaterThanOrEqual(h(11, 30));
+        expect(plan[id][d]).toBeLessThanOrEqual(h(12, 30));
+      }
+    }
+    expect(rosa).toBeGreaterThan(0);
+    expect(morning).toBeGreaterThan(0);
+  });
+
+  it('a tarde segue na janela legal (a partir de 11:30 sem esforço)', () => {
+    const input = exampleInput();
+    const plan = planLunches(input);
+    for (const id of ['pedro', 'lucas', 'joao']) {
+      const e = input.employees.find((x) => x.id === id)!;
+      for (let d = 0; d < CYCLE_DAYS; d++) {
+        const cell = input.schedule[id][d];
+        if (cell.status !== 'work' || isSingleShiftDay(input.config, weekdayOf(d))) continue;
+        const hours = effectiveHours(input.config, e, cell, d)!;
+        expect(hours.start).toBeGreaterThanOrEqual(h(13));
+        expect(plan[id][d]).toBeGreaterThanOrEqual(hours.start + LUNCH_MIN_OFFSET);
+        expect(plan[id][d]).toBeLessThanOrEqual(hours.start + LUNCH_MAX_OFFSET);
+      }
+    }
+  });
+
+  it('jornada da tarde sozinha: o mesmo almoço com ou sem preferência', () => {
+    const e = emp('pedro', 'balconista', 'tarde');
+    const config = baseConfig();
+    const with1130 = planLunches({ config, employees: [e], schedule: allWork([e]) });
+    const without = planLunches({ config: { ...config, lunchFrom: 0 }, employees: [e], schedule: allWork([e]) });
+    expect(with1130).toEqual(without);
+  });
+
+  it('sem início legal a partir de 11:30 (06:00–10:00): o mais tarde possível', () => {
+    const e = emp('a', 'caixa', 'manha', { customHours: { start: h(6), end: h(10), breakMinutes: 15 } });
+    const plan = planLunches({ config: baseConfig(), employees: [e], schedule: allWork([e]) });
+    // Janela legal: 08:00 até 09:44 (terminar antes das 10:00); na grade, o último início é 09:30.
+    expect(plan.a[1]).toBe(h(9, 30));
+  });
+
+  it('"Almoço a partir de" 12:00 empurra os almoços da manhã; a regra das 6h continua valendo', () => {
+    const a = emp('a', 'caixa', 'manha');
+    const rosa = emp('rosa', 'balconista', 'manha', { customHours: { start: h(5, 45), end: h(13, 30), breakMinutes: 60 } });
+    const employees = [a, rosa];
+    const at = (lunchFrom: number) => planLunches({ config: { ...baseConfig(), lunchFrom }, employees, schedule: allWork(employees) });
+    expect(at(h(11, 30)).a[1]).toBe(h(11, 30));
+    expect(at(h(12)).a[1]).toBe(h(12));
+    // Rosa precisa começar até 11:45 (6h depois das 05:45): fica com o mais perto de 12:00.
+    expect(at(h(12)).rosa[1]).toBe(h(11, 45));
+  });
+
+  it('jornada da madrugada: a preferência não muda nada', () => {
+    const config: StoreConfig = {
+      ...baseConfig(),
+      shifts: [{ id: 'noite', name: 'Noite', start: h(22), end: h(6), breakMinutes: 60 }],
+      minimums: [],
+    };
+    const e = emp('n', 'caixa', 'noite');
+    const plan = (lunchFrom: number) => planLunches({ config: { ...config, lunchFrom }, employees: [e], schedule: allWork([e]) });
+    expect(plan(h(11, 30))).toEqual(plan(0));
+    expect(plan(h(11, 30)).n[1]!).toBeGreaterThanOrEqual(24 * 60);
+  });
+
+  it('sem lunchFrom (dados antigos): vale 11:30', () => {
+    const { lunchFrom: _drop, ...config } = baseConfig();
+    void _drop;
+    const e = emp('a', 'caixa', 'manha');
+    expect(planLunches({ config, employees: [e], schedule: allWork([e]) }).a[1]).toBe(h(11, 30));
+  });
+
+  it('mercado do exemplo: com 11:30 os buracos de almoço da manhã ficam a partir de 11:30', () => {
+    const input = exampleInput();
+    const gaps = findLunchGaps(input, planLunches(input));
+    for (const g of gaps) expect(g.from).toBeGreaterThanOrEqual(h(11, 30));
   });
 });

@@ -1,7 +1,7 @@
 import { localToday, sundayOnOrBefore } from './dates';
 import { defaultRegime } from './legal';
 import type { AppDocument, StoreDay } from './types';
-import { SCHEMA_VERSION } from './types';
+import { DEFAULT_LUNCH_FROM, SCHEMA_VERSION } from './types';
 
 const h = (hh: number, mm = 0) => hh * 60 + mm;
 
@@ -35,6 +35,7 @@ export function exampleDocument(today: Date = new Date()): AppDocument {
       ],
       regime: defaultRegime(today),
       offPattern: 'together',
+      lunchFrom: DEFAULT_LUNCH_FROM,
     },
     employees: [
       { id: 'andreza', name: 'Andreza', roleId: 'caixa', secondaryRoleId: 'balconista', shiftId: 'manha', isWoman: true },
@@ -76,6 +77,7 @@ export function emptyDocument(today: Date = new Date()): AppDocument {
       minimums: [],
       regime: defaultRegime(today),
       offPattern: 'together',
+      lunchFrom: DEFAULT_LUNCH_FROM,
     },
     employees: [],
     schedule: null,

@@ -4,12 +4,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { toBlob } from 'html-to-image';
 import { exampleDocument } from '../../domain/example';
 import { generateSchedule } from '../../domain/generator';
+import { cellOnDate, projectMonth } from '../../domain/month';
 import { evaluateRules } from '../../domain/rules';
 import { CYCLE_DAYS, type AppDocument } from '../../domain/types';
 import { serializeBackup } from '../../state/backup';
 import { appStore } from '../../state/store';
 import { LegalNotice } from '../LegalNotice';
 import { ExportPanel } from './ExportPanel';
+import { buildPersonalModel } from './personalModel';
 
 vi.mock('html-to-image', () => ({ toBlob: vi.fn() }));
 const toBlobMock = vi.mocked(toBlob);
@@ -252,12 +254,14 @@ describe('ExportPanel no mês', () => {
     });
   });
 
-  it('folha do mês tem todas as datas do mês, semana a semana, com o feriado', async () => {
+  it('formato tabela: folha do mês tem todas as datas do mês, semana a semana, com o feriado', async () => {
     render(<ExportPanel month={{ year: 2026, month: 12 }} onClose={vi.fn()} />);
-    await screen.findByText('Imagem de 29/11 – 05/12 pronta.');
     expect(screen.getByRole('button', { name: 'Mês: Dezembro de 2026' })).toHaveAttribute('aria-pressed', 'true');
+    await userEvent.click(screen.getByRole('button', { name: 'Tabela por semana' }));
+    await screen.findByText('Imagem de 29/11 – 05/12 pronta.');
     const sheet = printSheet();
     expect(sheet).toHaveAttribute('data-scope', 'month');
+    expect(sheet).not.toHaveAttribute('data-format');
     expect(sheet).toHaveTextContent('Escala de Dezembro de 2026');
     for (let d = 1; d <= 31; d++) expect(sheet).toHaveTextContent(`${String(d).padStart(2, '0')}/12`);
     const weeks = within(sheet).getAllByTestId('print-week');
@@ -287,9 +291,10 @@ describe('ExportPanel no mês', () => {
     expect(sheet.textContent).not.toMatch(/alerta/i);
   });
 
-  it('imagens por semana com datas reais; dá para voltar ao ciclo', async () => {
+  it('formato tabela: imagens por semana com datas reais; dá para voltar ao ciclo', async () => {
     setShare(true, () => Promise.resolve());
     render(<ExportPanel month={{ year: 2026, month: 12 }} onClose={vi.fn()} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Tabela por semana' }));
     await screen.findByText('Imagem de 29/11 – 05/12 pronta.');
     expect(weekImage()).toHaveTextContent('Escala 29/11 – 05/12');
     expect(weekImage()).toHaveTextContent('Dom 29/11');
@@ -431,9 +436,10 @@ describe('ExportPanel por funcionário no mês', () => {
     });
   });
 
-  it('segue o escopo do mês: datas reais, feriado, ajuste e compartilha com o nome do mês', async () => {
+  it('formato tabela: segue o escopo do mês: datas reais, feriado, ajuste e compartilha com o nome do mês', async () => {
     setShare(true, () => Promise.resolve());
     render(<ExportPanel month={{ year: 2026, month: 12 }} onClose={vi.fn()} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Tabela por semana' }));
     await userEvent.selectOptions(screen.getByLabelText('Funcionário'), 'Rosa');
     await screen.findByText('Imagem de Rosa pronta.');
     expect(preview()).toHaveTextContent('Dezembro de 2026');
@@ -455,6 +461,189 @@ describe('ExportPanel por funcionário no mês', () => {
     await screen.findByText('Imagem de Rosa pronta.');
     expect(preview()).toHaveTextContent('Ciclo de 3 semanas a partir de 29/11/2026');
     expect(within(preview()).getAllByTestId('personal-day')).toHaveLength(CYCLE_DAYS);
+  });
+});
+
+const DECEMBER = { year: 2026, month: 12 };
+const monthImage = () => screen.getByTestId('month-image');
+const isOutside = (td: HTMLElement) => td.classList.contains('cal-outside');
+
+describe('ExportPanel no mês — calendário (padrão)', () => {
+  let printSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    const doc = fixture();
+    appStore.setState({
+      document: {
+        ...doc,
+        calendar: {
+          cycleStart: '2026-11-29',
+          closedDates: ['2026-12-25'],
+          dateOverrides: [{ date: '2026-12-02', employeeId: 'rosa', cell: { status: 'off' } }],
+        },
+      },
+    });
+    printSpy = vi.spyOn(window, 'print').mockImplementation(() => {});
+  });
+  afterEach(() => printSpy.mockRestore());
+
+  it('a impressão sai em calendário: A4 deitada, domingo a sábado, cada data do mês uma vez', async () => {
+    render(<ExportPanel month={DECEMBER} onClose={vi.fn()} />);
+    await screen.findByText('Imagem de dezembro de 2026 pronta.');
+    expect(screen.getByRole('button', { name: 'Calendário' })).toHaveAttribute('aria-pressed', 'true');
+    const sheet = printSheet();
+    expect(sheet).toHaveAttribute('data-scope', 'month');
+    expect(sheet).toHaveAttribute('data-format', 'calendar');
+    expect(sheet.querySelector('style')?.textContent).toContain('A4 landscape');
+    expect(within(sheet).queryAllByTestId('print-week')).toHaveLength(0);
+    expect(within(sheet).getAllByTestId('calendar-page')).toHaveLength(1);
+    expect(sheet).toHaveTextContent('Mercado do exemplo');
+    expect(sheet).toHaveTextContent('Dezembro de 2026');
+    expect(sheet.querySelector('.tc-legend')).toHaveTextContent('U = Turno único Dom 07:00–13:00');
+
+    const cal = within(sheet).getByTestId('team-calendar');
+    expect(Array.from(cal.querySelectorAll('thead th')).map((th) => th.textContent)).toEqual([
+      'Domingo',
+      'Segunda',
+      'Terça',
+      'Quarta',
+      'Quinta',
+      'Sexta',
+      'Sábado',
+    ]);
+    const weeks = within(cal).getAllByTestId('calendar-week');
+    expect(weeks).toHaveLength(5);
+    for (const w of weeks) expect(within(w).getAllByTestId('calendar-day')).toHaveLength(7);
+    const days = within(cal).getAllByTestId('calendar-day');
+    expect(days.filter((d) => !isOutside(d)).map((d) => d.querySelector('.cal-num')!.textContent)).toEqual(
+      Array.from({ length: 31 }, (_, i) => String(i + 1)),
+    );
+    // Fora do mês: só o número.
+    const outside = days.filter(isOutside);
+    expect(outside.map((d) => d.textContent)).toEqual(['29', '30', '1', '2']);
+
+    const day = (date: string) => days.find((d) => d.dataset.date === date)!;
+    expect(day('2026-12-25')).toHaveTextContent('Feriado — fechado');
+    expect(within(day('2026-12-25')).queryAllByTestId('calendar-shift')).toHaveLength(0);
+    // Quinta 03/12: cada pessoa no turno do cadastro, ou na lista de folga.
+    const doc = appStore.getState().document;
+    const thursday = day('2026-12-03');
+    const lines = within(thursday).getAllByTestId('calendar-shift');
+    expect(lines.map((l) => l.textContent?.slice(0, 1))).toEqual(['M', 'T']);
+    for (const e of doc.employees) {
+      const { cell } = cellOnDate(doc, e.id, '2026-12-03');
+      const line = lines.find((l) => l.textContent?.includes(e.name));
+      if (cell?.status === 'work') {
+        expect(line?.textContent?.slice(0, 1)).toBe(e.shiftId === 'manha' ? 'M' : 'T');
+      } else {
+        expect(line).toBeUndefined();
+        expect(thursday.querySelector('.tc-off')).toHaveTextContent(e.name);
+      }
+    }
+    // Ajuste da data, turno único no domingo e vaga sem ninguém (discreta, só na impressão).
+    expect(day('2026-12-02').querySelector('.tc-off')).toHaveTextContent('Rosa');
+    expect(within(day('2026-12-06')).getAllByTestId('calendar-shift').map((l) => l.textContent?.slice(0, 1))).toEqual(['U']);
+    expect(day('2026-12-08')).toHaveTextContent('Falta 1 balconista (T)');
+  });
+
+  it('imagem do mês: um calendário só, sem "Falta", compartilhado com o nome do mês', async () => {
+    setShare(true, () => Promise.resolve());
+    render(<ExportPanel month={DECEMBER} onClose={vi.fn()} />);
+    await screen.findByText('Imagem de dezembro de 2026 pronta.');
+    expect(screen.queryByTestId('week-image')).not.toBeInTheDocument();
+    const image = monthImage();
+    expect(within(image).getByTestId('team-calendar')).toBeInTheDocument();
+    expect(image).toHaveTextContent('Mercado do exemplo');
+    expect(image).toHaveTextContent('Dezembro de 2026');
+    expect(within(image).getAllByTestId('calendar-day').filter((d) => !isOutside(d))).toHaveLength(31);
+    expect(image).not.toHaveTextContent('Falta');
+    const nodes = toBlobMock.mock.calls.map(([node]) => (node as HTMLElement).dataset.testid);
+    expect(nodes).toContain('month-image');
+    expect(nodes).not.toContain('week-image');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Compartilhar' }));
+    const arg = (navigator.share as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0] as ShareData;
+    expect(arg.title).toBe('Mercado do exemplo — Dezembro de 2026');
+    expect(arg.files?.[0].name).toBe('escala-mercado-do-exemplo-dezembro-2026.png');
+  });
+
+  it('por funcionário: prévia, imagem e impressão em calendário, com almoço, folga, feriado e totais', async () => {
+    render(<ExportPanel month={DECEMBER} onClose={vi.fn()} />);
+    await userEvent.selectOptions(screen.getByLabelText('Funcionário'), 'Rosa');
+    await screen.findByText('Imagem de Rosa pronta.');
+    const cal = within(preview()).getByTestId('personal-calendar');
+    expect(Array.from(cal.querySelectorAll('thead th')).map((th) => th.textContent)).toEqual([
+      'Domingo',
+      'Segunda',
+      'Terça',
+      'Quarta',
+      'Quinta',
+      'Sexta',
+      'Sábado',
+      'Semana',
+    ]);
+    const weeks = within(cal).getAllByTestId('personal-calendar-week');
+    expect(weeks).toHaveLength(5);
+    for (const w of weeks) expect(within(w).getAllByTestId('personal-calendar-day')).toHaveLength(7);
+    const days = within(cal).getAllByTestId('personal-calendar-day');
+    expect(days.filter((d) => !isOutside(d)).map((d) => d.querySelector('.cal-num')!.textContent)).toEqual(
+      Array.from({ length: 31 }, (_, i) => String(i + 1)),
+    );
+    expect(days.filter(isOutside).map((d) => d.textContent)).toEqual(['29', '30', '1', '2']);
+    const day = (date: string) => days.find((d) => d.dataset.date === date)!;
+    expect(day('2026-12-02')).toHaveTextContent('Folga');
+    expect(day('2026-12-25')).toHaveTextContent('Feriado');
+    const work = days.filter((d) => d.classList.contains('pc-work'));
+    expect(work.length).toBeGreaterThan(15);
+    for (const d of work) expect(d.textContent).toMatch(/\d{2}:\d{2}–\d{2}:\d{2}.*almoço \d{2}:\d{2}–\d{2}:\d{2}/);
+    for (const d of days.filter((x) => x.classList.contains('pc-off'))) expect(d).toHaveTextContent('Folga');
+    const model = buildPersonalModel(appStore.getState().document, 'rosa', { kind: 'month', ...DECEMBER })!;
+    expect(within(cal).getAllByTestId('personal-calendar-total').map((t) => t.textContent)).toEqual(
+      model.weeks.map((w) => w.total),
+    );
+
+    // A imagem da pessoa é o mesmo calendário.
+    expect(personalImage()).toHaveAttribute('data-format', 'calendar');
+    expect(within(personalImage()).getByTestId('personal-calendar')).toBeInTheDocument();
+    expect(personalImage()).toHaveTextContent('Rosa');
+    const last = toBlobMock.mock.calls.filter(([node]) => (node as HTMLElement).dataset.testid === 'personal-image').at(-1)!;
+    expect((last[0] as HTMLElement).querySelector('[data-testid="personal-calendar"]')).not.toBeNull();
+
+    // Impressão só desta pessoa: A4 em pé, calendário; a folha da equipe fica de fora (sem forçar paisagem).
+    await userEvent.click(screen.getByRole('button', { name: 'Imprimir só esta pessoa' }));
+    expect(printSpy).toHaveBeenCalledTimes(1);
+    const print = screen.getByTestId('personal-print');
+    expect(print).toHaveAttribute('data-format', 'calendar');
+    expect(print.querySelector('style')?.textContent).toContain('A4 portrait');
+    expect(within(print).getAllByTestId('personal-page')).toHaveLength(1);
+    expect(within(print).getByTestId('personal-calendar')).toBeInTheDocument();
+    expect(print).toHaveTextContent('Rosa');
+    expect(printSheet()).toHaveAttribute('data-print-skip');
+    expect(printSheet().querySelector('style')).toBeNull();
+
+    // "Tabela por semana" volta à lista de dias.
+    await userEvent.click(screen.getByRole('button', { name: 'Tabela por semana' }));
+    expect(within(preview()).queryByTestId('personal-calendar')).not.toBeInTheDocument();
+    expect(within(preview()).getAllByTestId('personal-day')).toHaveLength(35);
+  });
+
+  it('não leva alertas nem "Funcionária mulher" para o calendário', async () => {
+    const doc = appStore.getState().document;
+    doc.schedule!.andreza = Array.from({ length: CYCLE_DAYS }, () => ({ status: 'work' as const }));
+    appStore.getState().replaceDocument({ ...doc });
+    const messages = projectMonth(doc, 2026, 12)!.alerts.map((a) => a.message);
+    expect(messages.length).toBeGreaterThan(0);
+    render(<ExportPanel month={DECEMBER} onClose={vi.fn()} />);
+    await screen.findByText('Imagem de dezembro de 2026 pronta.');
+    await screen.findByText('Imagem de Andreza pronta.');
+    const team = [printSheet(), monthImage()].map((n) => n.textContent ?? '');
+    await userEvent.click(screen.getByRole('button', { name: 'Imprimir todos (uma página por pessoa)' }));
+    const personal = [preview(), personalImage(), screen.getByTestId('personal-print')].map((n) => n.textContent ?? '');
+    for (const text of [...team, ...personal]) {
+      expect(text).not.toMatch(/Funcionária mulher|alerta/i);
+      for (const m of messages) expect(text).not.toContain(m);
+    }
+    for (const text of personal) expect(text).not.toMatch(/Falta|Dono\/família/);
   });
 });
 

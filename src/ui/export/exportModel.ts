@@ -56,6 +56,10 @@ export type GapCell =
 export interface GapRow {
   key: string;
   label: string;
+  /** Função da vaga ("Balconista"), para o calendário do mês. */
+  roleName: string;
+  /** Sigla do turno da vaga ("T", "U"), para o calendário do mês. */
+  shiftInitial: string;
   cells: GapCell[];
 }
 
@@ -98,6 +102,11 @@ export function shiftInitials(shifts: Shift[]): Map<string, string> {
 function singleInitial(initials: Map<string, string>): string {
   const used = new Set(initials.values());
   return used.has('U') ? 'TU' : 'U';
+}
+
+/** Sigla do turno único para os turnos cadastrados (a mesma da legenda da equipe). */
+export function singleShiftInitial(shifts: Shift[]): string {
+  return singleInitial(shiftInitials(shifts));
 }
 
 export function displayStoreName(document: AppDocument): string {
@@ -196,6 +205,8 @@ function buildBody(
       group = {
         key,
         label: `${h.roleName.get(gap.roleId) ?? ''} · ${shiftName}${slotText}`,
+        roleName: h.roleName.get(gap.roleId) ?? '',
+        shiftInitial: h.initialOf(gap.shiftId),
         cells: days.map(() => ({ kind: 'none' }) as GapCell),
       };
       groups.set(key, group);

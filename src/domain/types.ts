@@ -35,7 +35,8 @@ export interface WorkHours {
   breakMinutes: Minutes;
   /**
    * Início do almoço (minutos desde 00:00). Opcional: sem ele, o site planeja o almoço sozinho
-   * (lunch.ts), escalonando para a função não ficar descoberta e começando até a 6ª hora de trabalho.
+   * (lunch.ts), a partir de `StoreConfig.lunchFrom` quando possível, escalonando para a função não ficar
+   * descoberta e começando até a 6ª hora de trabalho.
    */
   breakStart?: Minutes;
 }
@@ -87,7 +88,15 @@ export interface StoreConfig {
   minimums: Minimum[];
   regime: Regime;
   offPattern: OffPattern;
+  /**
+   * Horário preferido para o almoço começar (minutos desde 00:00). O planejador (lunch.ts) só marca um
+   * almoço antes disso quando a regra das 6h não deixa outra opção. Ausente em dados antigos: 11:30.
+   */
+  lunchFrom?: Minutes;
 }
+
+/** Padrão de `StoreConfig.lunchFrom`: 11:30. */
+export const DEFAULT_LUNCH_FROM: Minutes = 11 * 60 + 30;
 
 export interface Employee {
   id: string;
