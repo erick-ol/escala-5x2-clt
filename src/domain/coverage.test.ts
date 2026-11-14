@@ -5,9 +5,12 @@ import { CYCLE_DAYS } from './types';
 
 const h = (hh: number, mm = 0) => hh * 60 + mm;
 
-// Dias do ciclo: 0 = segunda da semana 1. Terça = 1, quarta = 2, quinta = 3, domingo = 6.
-const TER = [1, 8, 15];
-const QUI = [3, 10, 17];
+// Dias do ciclo: 0 = domingo da semana 1. Segunda = 1, terça = 2, quinta = 4, sábado = 6.
+const DOM = [0, 7, 14];
+const SEG = [1, 8, 15];
+const TER = [2, 9, 16];
+const QUI = [4, 11, 18];
+const SAB = [6, 13, 20];
 
 /** O exemplo com o domingo igual aos outros dias (sem turno único): estes testes não são sobre o turno único. */
 function withoutSingleShift(config: StoreConfig): StoreConfig {
@@ -209,10 +212,18 @@ describe('cobertura', () => {
 
   test('um buraco por semana usa o singular', () => {
     const employees = fullTeam();
-    const schedule = scheduleFor(employees, { andreza: [6, 13, 20] });
+    const schedule = scheduleFor(employees, { andreza: DOM });
     const r = computeCoverage(input({ employees, schedule }));
     expect(r.summary[0].perWeek).toBe(1);
     expect(r.headline).toBe('1 buraco por semana: caixa de manhã, domingo');
+  });
+
+  test('o resumo lista os dias de domingo a sábado', () => {
+    const employees = fullTeam();
+    const schedule = scheduleFor(employees, { andreza: [...SAB, ...SEG, ...DOM] });
+    const r = computeCoverage(input({ employees, schedule }));
+    expect(r.summary[0].weekdays).toEqual([6, 0, 5]);
+    expect(r.summary[0].text).toBe('Caixa de manhã: domingo, segunda e sábado');
   });
 
   test('mínimo diferente no domingo é respeitado', () => {
@@ -220,7 +231,7 @@ describe('cobertura', () => {
     config.minimums = [{ roleId: 'caixa', shiftId: 'manha', perWeekday: [1, 1, 1, 1, 1, 1, 2] }];
     const employees = [emp('andreza', 'caixa', 'manha')];
     const r = computeCoverage(input({ config, employees }));
-    expect(r.gaps.map((g) => g.day)).toEqual([6, 13, 20]);
+    expect(r.gaps.map((g) => g.day)).toEqual(DOM);
     expect(countGaps(config, employees, scheduleFor(employees))).toBe(3);
   });
 
@@ -229,8 +240,8 @@ describe('cobertura', () => {
     config.days[6] = { ...config.days[6], open: false };
     const employees = fullTeam();
     const schedule = scheduleFor(employees);
-    for (const e of employees) for (const d of [6, 13, 20]) schedule[e.id][d] = { status: 'closed' };
-    const mark = ownerMark(6, 'manha', 'caixa');
+    for (const e of employees) for (const d of DOM) schedule[e.id][d] = { status: 'closed' };
+    const mark = ownerMark(7, 'manha', 'caixa');
     const r = computeCoverage(input({ config, employees, schedule, marks: [mark] }));
     expect(r.gaps).toEqual([]);
     expect(r.orphanMarks).toEqual([mark]);

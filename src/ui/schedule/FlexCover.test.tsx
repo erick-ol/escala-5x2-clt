@@ -6,6 +6,7 @@ import { generateSchedule } from '../../domain/generator';
 import { WEEKDAY_NAMES, type AppDocument } from '../../domain/types';
 import { appStore } from '../../state/store';
 import { buildExportModel } from '../export/exportModel';
+import { weekdayOf } from '../../domain/time';
 import { ScheduleView } from './ScheduleView';
 
 const TODAY = new Date('2026-11-14T12:00:00');
@@ -42,7 +43,7 @@ describe('segunda área na escala (dados reais do exemplo)', () => {
 
     for (const f of flex) {
       const name = doc.employees.find((e) => e.id === f.employeeId)!.name;
-      const weekday = WEEKDAY_NAMES[f.day].toLowerCase();
+      const weekday = WEEKDAY_NAMES[weekdayOf(f.day)].toLowerCase();
       const btn = screen.getByRole('button', { name: new RegExp(`^${name}, ${weekday}, semana 1: trabalha .*cobrindo Balconista`) });
       expect(btn).toHaveTextContent('→ Balc.');
     }
@@ -52,7 +53,7 @@ describe('segunda área na escala (dados reais do exemplo)', () => {
 
     const first = flex[0];
     const name = doc.employees.find((e) => e.id === first.employeeId)!.name;
-    await user.click(screen.getByRole('button', { name: new RegExp(`^${name}, ${WEEKDAY_NAMES[first.day].toLowerCase()}, semana 1:`) }));
+    await user.click(screen.getByRole('button', { name: new RegExp(`^${name}, ${WEEKDAY_NAMES[weekdayOf(first.day)].toLowerCase()}, semana 1:`) }));
     expect(screen.getByText('Neste dia cobre: Balconista')).toBeInTheDocument();
   });
 

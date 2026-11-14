@@ -15,7 +15,7 @@ import {
 } from '../domain/types';
 import { reconcileDocument } from '../domain/reconcile';
 import { weekdayOf } from '../domain/time';
-import { isISODate, mondayOnOrBefore } from '../domain/dates';
+import { isISODate, sundayOnOrBefore } from '../domain/dates';
 import { parseDocument } from './schema';
 
 export const STORAGE_KEY = 'escala-5x2-clt:v1';
@@ -64,7 +64,7 @@ export interface AppState {
   setCell(employeeId: string, day: number, cell: Cell): void;
   setMarks(marks: CoverageMark[]): void;
   setLunchMarks(lunchMarks: LunchMark[]): void;
-  /** Visão Mês: segunda-feira em que o ciclo começa (outra data é levada à segunda anterior). */
+  /** Visão Mês: domingo em que o ciclo começa (outra data é levada ao domingo anterior). */
   setCycleStart(date: ISODate): void;
   /** Visão Mês: loja fechada (feriado) só nesta data. */
   setClosedDate(date: ISODate, closed: boolean): void;
@@ -204,7 +204,7 @@ export function createAppStore(storage: KeyValueStorage | null, now: () => Date 
       setCycleStart: (date) => {
         if (!isISODate(date)) return;
         const d = doc();
-        const cycleStart = mondayOnOrBefore(date);
+        const cycleStart = sundayOnOrBefore(date);
         if (cycleStart === d.calendar.cycleStart) return;
         setDocument({ ...d, calendar: { ...d.calendar, cycleStart } });
       },

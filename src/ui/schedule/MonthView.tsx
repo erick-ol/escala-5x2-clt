@@ -4,6 +4,7 @@ import { formatDayMonth, formatFullDate, isISODate, monthLabel, shiftMonth, week
 import type { MonthAlert, ProjectedWeek } from '../../domain/month';
 import { isInMonth } from '../../domain/month';
 import type { LegalAlert } from '../../domain/rules';
+import { weekdayOf } from '../../domain/time';
 import { WEEKDAY_NAMES, type ISODate } from '../../domain/types';
 import { appStore, useAppStore } from '../../state/store';
 import { monthWeekDerived, useMonthProjection } from '../../state/useDerived';
@@ -24,7 +25,7 @@ export interface MonthViewProps {
   switcher: ReactNode;
 }
 
-/** Posição de uma data na tela: semana (índice em `projection.weeks`) e coluna (0 = segunda). */
+/** Posição de uma data na tela: semana (índice em `projection.weeks`) e coluna (0 = domingo … 6 = sábado). */
 interface Slot {
   week: number;
   c: number;
@@ -45,7 +46,7 @@ export function monthAlertWhere(alert: LegalAlert): string {
 /** Alertas de uma semana real: os da semana inteira e os que tocam alguma das 7 datas. */
 function alertsOfWeek(w: ProjectedWeek, alerts: MonthAlert[]): MonthAlert[] {
   return alerts.filter((a) =>
-    a.date === null ? a.weekStart === w.monday : (a.endDate ?? a.date) >= w.dates[0] && a.date <= w.dates[6],
+    a.date === null ? a.weekStart === w.sunday : (a.endDate ?? a.date) >= w.dates[0] && a.date <= w.dates[6],
   );
 }
 
@@ -93,7 +94,7 @@ export function MonthView({ year, month, onChangeMonth, switcher }: MonthViewPro
       const found = slots.find((s) => dateOf(s) === date);
       target = found ?? null;
     } else if (a.weekStart) {
-      const week = weeks.findIndex((w) => w.monday === a.weekStart);
+      const week = weeks.findIndex((w) => w.sunday === a.weekStart);
       if (week >= 0) target = { week, c: 0 };
     }
     setAlertList(null);
@@ -201,7 +202,7 @@ export function MonthView({ year, month, onChangeMonth, switcher }: MonthViewPro
             const next = slots[i + 1];
             const name = (s: Slot) => `${WEEKDAY_NAMES[weekdayOfDate(dateOf(s))]}, ${formatDayMonth(dateOf(s))}`;
             return {
-              title: `${WEEKDAY_NAMES[day.slot.c]}, ${formatFullDate(dateOf(day.slot))} — Semana ${day.w.cycleWeek + 1} do ciclo`,
+              title: `${WEEKDAY_NAMES[weekdayOfDate(dateOf(day.slot))]}, ${formatFullDate(dateOf(day.slot))} — Semana ${day.w.cycleWeek + 1} do ciclo`,
               holiday: day.w.holidays[day.slot.c],
               ...(prev ? { prev: { label: `Dia anterior: ${name(prev)}`, go: () => setDayView(prev) } } : {}),
               ...(next ? { next: { label: `Próximo dia: ${name(next)}`, go: () => setDayView(next) } } : {}),
@@ -227,7 +228,7 @@ export function MonthView({ year, month, onChangeMonth, switcher }: MonthViewPro
 
           <div className="mv-cycle">
             <p className="mv-cycle-line">
-              O ciclo começa em: <strong>segunda, {formatFullDate(cycleStart)}</strong>{' '}
+              O ciclo começa em: <strong>domingo, {formatFullDate(cycleStart)}</strong>{' '}
               <button
                 type="button"
                 className="link-btn"
@@ -239,13 +240,13 @@ export function MonthView({ year, month, onChangeMonth, switcher }: MonthViewPro
             </p>
             {editingStart && (
               <div className="field mv-cycle-field">
-                <label htmlFor={startInputId}>Início do ciclo (segunda-feira)</label>
+                <label htmlFor={startInputId}>Início do ciclo (domingo)</label>
                 <input
                   id={startInputId}
                   type="date"
                   className="input mono"
                   step={7}
-                  min="2020-01-06"
+                  min="2020-01-05"
                   value={cycleStart}
                   aria-describedby={startHintId}
                   onChange={(e) => onStartChange(e.target.value)}
@@ -253,18 +254,18 @@ export function MonthView({ year, month, onChangeMonth, switcher }: MonthViewPro
               </div>
             )}
             <p id={startHintId} className="hint mv-cycle-hint">
-              O ciclo de 3 semanas se repete a partir dessa data (semana 1, 2, 3, 1, 2, 3…). Outra data vira a
-              segunda-feira da mesma semana.
+              O ciclo de 3 semanas se repete a partir dessa data (semana 1, 2, 3, 1, 2, 3…). Outra data vira o
+              domingo da mesma semana.
             </p>
             <p className="hint mv-cycle-hint">
-              Toque numa data (Seg, Ter…) para marcar feriado ou ver o dia; toque numa célula para ajustar só aquela data.
+              Toque numa data (Dom, Seg…) para marcar feriado ou ver o dia; toque numa célula para ajustar só aquela data.
             </p>
           </div>
 
           {weeks.map((w, i) => {
-            const titleId = `mv-week-${w.monday}`;
+            const titleId = `mv-week-${w.sunday}`;
             return (
-              <section key={w.monday} className="mv-week" aria-labelledby={titleId}>
+              <section key={w.sunday} className="mv-week" aria-labelledby={titleId}>
                 <h3 id={titleId} className="mv-week-title">
                   <span className="mono">{weekRange(w)}</span>
                   <span className="mv-week-cycle"> · Semana {w.cycleWeek + 1} do ciclo</span>
@@ -331,7 +332,7 @@ export function MonthView({ year, month, onChangeMonth, switcher }: MonthViewPro
           mark={gapEntry.mark}
           readOnly={{
             kicker: gapEntry.gap
-              ? `${WEEKDAY_NAMES[gapEntry.gap.day % 7]}, ${formatDayMonth(weeks[openGap.week].dates[gapEntry.gap.day - weeks[openGap.week].firstDay])} · Semana ${weeks[openGap.week].cycleWeek + 1} do ciclo`
+              ? `${WEEKDAY_NAMES[weekdayOf(gapEntry.gap.day)]}, ${formatDayMonth(weeks[openGap.week].dates[gapEntry.gap.day - weeks[openGap.week].firstDay])} · Semana ${weeks[openGap.week].cycleWeek + 1} do ciclo`
               : '',
             note: 'Quem cobre uma vaga se marca na visão Ciclo e vale para este dia em todas as repetições do ciclo. Para mudar só esta data, toque nas células e ajuste a escala da data.',
           }}

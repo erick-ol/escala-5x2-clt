@@ -154,7 +154,7 @@ function MonthLegend({ legend, hasFlex, hasHoliday }: { legend: LegendItem[]; ha
 }
 
 /**
- * Folha de impressão do mês: uma tabela por semana (segunda a domingo), com as datas reais.
+ * Folha de impressão do mês: uma tabela por semana (domingo a sábado), com as datas reais.
  * Datas fora do mês saem apagadas (cinza e itálico), legíveis em preto e branco.
  */
 export function MonthPrintSheet({ model, skip }: { model: MonthExportModel; skip?: boolean }) {
@@ -175,7 +175,7 @@ export function MonthPrintSheet({ model, skip }: { model: MonthExportModel; skip
       </header>
       <MonthLegend legend={model.legend} hasFlex={hasFlex} hasHoliday={hasHoliday} />
       {model.weeks.map((w) => (
-        <table key={w.monday} className="ps-table ps-month-week" data-testid="print-week">
+        <table key={w.sunday} className="ps-table ps-month-week" data-testid="print-week">
           <thead>
             <tr>
               <th className="ps-name ps-week-label">

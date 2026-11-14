@@ -1,6 +1,6 @@
 import { DAILY_LIMIT_MINUTES } from '../../domain/legal';
 import { defaultBreakFor, isValidHours } from '../../domain/time';
-import { WEEKDAY_NAMES, type AppDocument, type Minimum, type Regime, type Shift, type StoreConfig, type StoreDay } from '../../domain/types';
+import { WEEKDAY_NAMES, WEEK_ORDER, type AppDocument, type Minimum, type Regime, type Shift, type StoreConfig, type StoreDay } from '../../domain/types';
 
 /** Gera um id legível e único a partir de um nome ("Manhã" → "manha", "manha-2"...). */
 export function slugId(name: string, taken: Iterable<string>, fallback = 'item'): string {
@@ -90,9 +90,9 @@ export function findMinimum(minimums: Minimum[], roleId: string, shiftId: string
 
 export function validateStoreHours(config: StoreConfig): string | null {
   if (!config.days.some((d) => d.open)) return 'Marque pelo menos um dia em que a loja abre.';
-  for (let i = 0; i < config.days.length; i += 1) {
+  for (const i of WEEK_ORDER) {
     const d = config.days[i];
-    if (d.open && d.closesAt <= d.opensAt) {
+    if (d?.open && d.closesAt <= d.opensAt) {
       return `${WEEKDAY_NAMES[i]}: o fechamento precisa ser depois da abertura.`;
     }
   }

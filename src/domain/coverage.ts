@@ -1,4 +1,4 @@
-import { dayShifts, effectiveShiftId, findShift, isVirtualShiftId, requiredCount, shiftHours, weekdayOf } from './time';
+import { dayShifts, effectiveShiftId, findShift, isVirtualShiftId, requiredCount, shiftHours, sortWeekdays, weekdayOf } from './time';
 import {
   CYCLE_DAYS,
   WEEKDAY_NAMES,
@@ -264,7 +264,7 @@ export function joinPt(items: string[]): string {
 
 export function weekdaysPhrase(weekdays: Weekday[]): string {
   if (weekdays.length === 7) return 'todos os dias';
-  return joinPt(weekdays.map((w) => WEEKDAY_NAMES[w].toLowerCase()));
+  return joinPt(sortWeekdays(weekdays).map((w) => WEEKDAY_NAMES[w].toLowerCase()));
 }
 
 function buildSummary(config: StoreConfig, gaps: Gap[]): SummaryItem[] {
@@ -277,7 +277,7 @@ function buildSummary(config: StoreConfig, gaps: Gap[]): SummaryItem[] {
     for (const role of config.roles) {
       const group = gaps.filter((g) => g.shiftId === shiftId && g.roleId === role.id);
       if (group.length === 0) continue;
-      const weekdays = [...new Set(group.map((g) => weekdayOf(g.day)))].sort((a, b) => a - b);
+      const weekdays = sortWeekdays([...new Set(group.map((g) => weekdayOf(g.day)))]);
       items.push({
         roleId: role.id,
         shiftId,

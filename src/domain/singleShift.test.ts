@@ -21,7 +21,8 @@ import { CYCLE_DAYS, DAYS_PER_WEEK, SUNDAY, WEEKS, type Cell, type Employee, typ
 
 const h = (hh: number, mm = 0) => hh * 60 + mm;
 const TODAY = new Date('2026-11-14');
-const SUNDAYS = [6, 13, 20];
+/** Domingos do ciclo (a semana começa no domingo). */
+const SUNDAYS = [0, 7, 14];
 
 function example() {
   return exampleDocument(TODAY);
@@ -63,19 +64,19 @@ describe('turno único: turno virtual', () => {
   it('no domingo todos estão no turno virtual, mesmo com ajuste de turno na célula', () => {
     const { config, employees } = example();
     const pedro = employees.find((e) => e.id === 'pedro')!;
-    expect(effectiveShiftId(config, pedro, { status: 'work' }, 6)).toBe('__dia6');
-    expect(effectiveShiftId(config, pedro, { status: 'work', shiftId: 'manha' }, 13)).toBe('__dia6');
-    expect(effectiveShiftId(config, pedro, { status: 'work', shiftId: 'manha' }, 5)).toBe('manha');
-    expect(effectiveShiftId(config, pedro, { status: 'work' }, 5)).toBe('tarde');
+    expect(effectiveShiftId(config, pedro, { status: 'work' }, 0)).toBe('__dia6');
+    expect(effectiveShiftId(config, pedro, { status: 'work', shiftId: 'manha' }, 7)).toBe('__dia6');
+    expect(effectiveShiftId(config, pedro, { status: 'work', shiftId: 'manha' }, 6)).toBe('manha');
+    expect(effectiveShiftId(config, pedro, { status: 'work' }, 6)).toBe('tarde');
   });
 
   it('horário no domingo: ignora o horário do cadastro, mas o ajuste do dia vale', () => {
     const { config, employees } = example();
     const rosa = employees.find((e) => e.id === 'rosa')!; // cadastro 05:45–13:30
-    expect(effectiveHours(config, rosa, { status: 'work' }, 6)).toEqual({ start: h(7), end: h(13), breakMinutes: 15 });
-    expect(effectiveHours(config, rosa, { status: 'work' }, 5)?.start).toBe(h(5, 45));
+    expect(effectiveHours(config, rosa, { status: 'work' }, 0)).toEqual({ start: h(7), end: h(13), breakMinutes: 15 });
+    expect(effectiveHours(config, rosa, { status: 'work' }, 6)?.start).toBe(h(5, 45));
     const adjusted = { start: h(8), end: h(12), breakMinutes: 0 };
-    expect(effectiveHours(config, rosa, { status: 'work', hours: adjusted }, 6)).toEqual(adjusted);
+    expect(effectiveHours(config, rosa, { status: 'work', hours: adjusted }, 0)).toEqual(adjusted);
   });
 
   it('mínimo no turno único = maior mínimo da função entre os turnos', () => {
@@ -85,11 +86,11 @@ describe('turno único: turno virtual', () => {
       { roleId: 'caixa', shiftId: 'tarde', perWeekday: [1, 1, 1, 1, 1, 1, 3] },
       { roleId: 'balconista', shiftId: 'manha', perWeekday: [1, 1, 1, 1, 1, 1, 0] },
     ];
-    expect(requiredCount(config, 6, '__dia6', 'caixa')).toBe(3);
-    expect(requiredCount(config, 6, '__dia6', 'balconista')).toBe(0);
-    expect(requiredCount(config, 6, 'manha', 'caixa')).toBe(0);
-    expect(requiredCount(config, 5, '__dia6', 'caixa')).toBe(0);
-    expect(requiredCount(config, 5, 'tarde', 'caixa')).toBe(1);
+    expect(requiredCount(config, 0, '__dia6', 'caixa')).toBe(3);
+    expect(requiredCount(config, 0, '__dia6', 'balconista')).toBe(0);
+    expect(requiredCount(config, 0, 'manha', 'caixa')).toBe(0);
+    expect(requiredCount(config, 6, '__dia6', 'caixa')).toBe(0);
+    expect(requiredCount(config, 6, 'tarde', 'caixa')).toBe(1);
   });
 });
 
@@ -104,10 +105,10 @@ describe('turno único: cobertura', () => {
     const schedule = allWork(employees);
     expect(computeCoverage({ config, employees, schedule, marks: [] }).gaps).toEqual([]);
     // Dois de folga no domingo da semana 1: sobram 2 caixas, falta 1 no turno único.
-    schedule.andreza[6] = { status: 'off' };
-    schedule.lucas[6] = { status: 'off' };
+    schedule.andreza[0] = { status: 'off' };
+    schedule.lucas[0] = { status: 'off' };
     const r = computeCoverage({ config, employees, schedule, marks: [] });
-    expect(r.gaps).toEqual([{ day: 6, shiftId: '__dia6', roleId: 'caixa', slot: 0 }]);
+    expect(r.gaps).toEqual([{ day: 0, shiftId: '__dia6', roleId: 'caixa', slot: 0 }]);
     expect(r.summary).toEqual([
       { roleId: 'caixa', shiftId: '__dia6', weekdays: [6], perWeek: 1, text: 'Caixa no turno único: domingo' },
     ]);
@@ -117,22 +118,22 @@ describe('turno único: cobertura', () => {
   it('marcação "coberto por" vale no turno único; a de um turno cadastrado no domingo vira órfã', () => {
     const { config, employees } = example();
     const schedule = allWork(employees);
-    for (const id of ['andreza', 'richard', 'lucas', 'joao']) schedule[id][6] = { status: 'off' };
-    const owner = { day: 6, shiftId: '__dia6', roleId: 'caixa', slot: 0, coveredBy: { kind: 'owner' as const } };
-    const stale = { day: 6, shiftId: 'manha', roleId: 'caixa', slot: 0, coveredBy: { kind: 'owner' as const } };
-    const viaRichard = { day: 6, shiftId: '__dia6', roleId: 'caixa', slot: 0, coveredBy: { kind: 'employee' as const, employeeId: 'richard' } };
+    for (const id of ['andreza', 'richard', 'lucas', 'joao']) schedule[id][0] = { status: 'off' };
+    const owner = { day: 0, shiftId: '__dia6', roleId: 'caixa', slot: 0, coveredBy: { kind: 'owner' as const } };
+    const stale = { day: 0, shiftId: 'manha', roleId: 'caixa', slot: 0, coveredBy: { kind: 'owner' as const } };
+    const viaRichard = { day: 0, shiftId: '__dia6', roleId: 'caixa', slot: 0, coveredBy: { kind: 'employee' as const, employeeId: 'richard' } };
     const a = computeCoverage({ config, employees, schedule, marks: [owner, stale] });
     expect(a.covered.map((g) => g.mark)).toEqual([owner]);
     expect(a.orphanMarks).toEqual([stale]);
     // Richard de folga cobrindo: jornada extra com o horário do turno único.
     const b = computeCoverage({ config, employees, schedule, marks: [viaRichard] });
     expect(b.extraShifts).toEqual([
-      { employeeId: 'richard', day: 6, shiftId: '__dia6', roleId: 'caixa', hours: { start: h(7), end: h(13), breakMinutes: 15 } },
+      { employeeId: 'richard', day: 0, shiftId: '__dia6', roleId: 'caixa', hours: { start: h(7), end: h(13), breakMinutes: 15 } },
     ]);
   });
 });
 
-const row2 = (s: Schedule, id: string, d: number) => s[id][d].status === 'work';
+const row2 = (s: Schedule, id: string, d: number) => s[id][(d + CYCLE_DAYS) % CYCLE_DAYS].status === 'work';
 
 describe('turno único: gerador', () => {
   function runs(row: Cell[]): { rest: number; work: number } {
@@ -223,12 +224,12 @@ describe('turno único: almoço, regras, reconciliação, sugestões e backup', 
     const doc = example();
     const schedule = allWork(doc.employees);
     const hours = { start: h(8), end: h(12), breakMinutes: 0 };
-    schedule.pedro[6] = { status: 'work', shiftId: 'manha', hours };
-    schedule.pedro[5] = { status: 'work', shiftId: 'manha' };
-    const mark = { day: 6, shiftId: '__dia6', roleId: 'caixa', slot: 0, coveredBy: { kind: 'owner' as const } };
+    schedule.pedro[0] = { status: 'work', shiftId: 'manha', hours };
+    schedule.pedro[6] = { status: 'work', shiftId: 'manha' };
+    const mark = { day: 0, shiftId: '__dia6', roleId: 'caixa', slot: 0, coveredBy: { kind: 'owner' as const } };
     const next = reconcileDocument({ ...doc, schedule, marks: [mark] });
-    expect(next.schedule!.pedro[6]).toEqual({ status: 'work', hours });
-    expect(next.schedule!.pedro[5]).toEqual({ status: 'work', shiftId: 'manha' });
+    expect(next.schedule!.pedro[0]).toEqual({ status: 'work', hours });
+    expect(next.schedule!.pedro[6]).toEqual({ status: 'work', shiftId: 'manha' });
     expect(next.marks).toEqual([mark]);
   });
 

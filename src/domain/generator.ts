@@ -7,6 +7,7 @@ import {
   isSingleShiftDay,
   isVirtualShiftId,
   requiredCount,
+  dayOfWeekday,
   virtualShiftId,
   weekdayOf,
 } from './time';
@@ -100,7 +101,7 @@ class Solver {
     this.sundayOpen = !!config.days[SUNDAY]?.open;
     this.together = config.offPattern !== 'flexible';
     let closedPerWeek = 0;
-    for (let w = 0; w < DAYS_PER_WEEK; w++) if (!config.days[w]?.open) closedPerWeek++;
+    for (let wd = 0; wd < DAYS_PER_WEEK; wd++) if (!config.days[wd]?.open) closedPerWeek++;
     this.offsPerWeek = Math.max(0, MIN_REST_DAYS_PER_WEEK - closedPerWeek);
 
     const shiftIndex = new Map(config.shifts.map((s, i) => [s.id, i]));
@@ -269,7 +270,7 @@ class Solver {
     const sundayOffsByGroup = new Map<string, number[]>();
     const sorted = [...order].sort((a, b) => Number(this.all[b].isWoman) - Number(this.all[a].isWoman) || a - b);
     for (const k of sorted) {
-      const key = `${this.shiftOn(k, SUNDAY)}|${this.role[k]}`;
+      const key = `${this.shiftOn(k, dayOfWeekday(0, SUNDAY))}|${this.role[k]}`;
       let perWeek = sundayOffsByGroup.get(key);
       if (!perWeek) {
         perWeek = Array.from({ length: WEEKS }, () => 0);
@@ -280,15 +281,15 @@ class Solver {
       for (let n = 0; n < need; n++) {
         const pw = perWeek;
         const scored = weeks
-          .filter((w) => !this.off[k][w * DAYS_PER_WEEK + SUNDAY])
+          .filter((w) => !this.off[k][dayOfWeekday(w, SUNDAY)])
           .map((w) => {
-            const d = w * DAYS_PER_WEEK + SUNDAY;
+            const d = dayOfWeekday(w, SUNDAY);
             return { w, score: [this.toggleDelta(k, d), pw[w], -this.surplus(k, d), w] };
           });
         scored.sort((a, b) => (lexLess(a.score, b.score) ? -1 : lexLess(b.score, a.score) ? 1 : 0));
         const best = scored[0]?.w;
         if (best === undefined) break;
-        this.setOff(k, best * DAYS_PER_WEEK + SUNDAY, true);
+        this.setOff(k, dayOfWeekday(best, SUNDAY), true);
         pw[best]++;
       }
     }
@@ -396,6 +397,29 @@ class Solver {
     for (let d = w * DAYS_PER_WEEK; d < (w + 1) * DAYS_PER_WEEK; d++) this.setOff(k, d, offs.includes(d));
   }
 
+  /**
+   * Custo total da escala (o mesmo objetivo da melhoria local): buracos de todos os dias mais as restrições e
+   * preferências das linhas das pessoas em `order`. Serve para escolher entre tentativas.
+   */
+  cost(order: number[]): number {
+    const closedMask = maskOf((d) => !this.open[d]);
+    let gaps = 0;
+    for (let s = 0; s < this.req.length; s++) for (let d = 0; d < CYCLE_DAYS; d++) gaps += this.gapAt(s, d);
+    let total = gaps * GAP_WEIGHT;
+    for (const k of order) {
+      const offMask = maskOf((d) => this.off[k][d]);
+      if (this.sundayOpen && !sundayRuleOk(offMask, this.all[k].isWoman)) total += VIOLATION_WEIGHT;
+      const { violations, soft } = maskCost(offMask, closedMask, this.together, this.restConflict[k]);
+      total += violations * VIOLATION_WEIGHT + soft;
+    }
+    return total;
+  }
+
+  /** Copia as folgas das pessoas em `order` de outra tentativa (mesma equipe e mesma configuração de dias). */
+  loadOffs(off: boolean[][], order: number[]): void {
+    for (const k of order) for (let d = 0; d < CYCLE_DAYS; d++) this.setOff(k, d, off[k][d]);
+  }
+
   row(k: number): Cell[] {
     return Array.from({ length: CYCLE_DAYS }, (_, d) => ({
       status: !this.open[d] ? 'closed' : this.off[k][d] ? 'off' : 'work',
@@ -404,7 +428,7 @@ class Solver {
 }
 
 const FULL_MASK = (1 << CYCLE_DAYS) - 1;
-const SUNDAY_BITS = Array.from({ length: WEEKS }, (_, w) => 1 << (w * DAYS_PER_WEEK + SUNDAY));
+const SUNDAY_BITS = Array.from({ length: WEEKS }, (_, w) => 1 << dayOfWeekday(w, SUNDAY));
 
 function maskOf(pred: (d: number) => boolean): number {
   let m = 0;
@@ -516,18 +540,29 @@ function solve(solver: Solver, order: number[]): void {
 
 /** Determinístico: mesma entrada → mesma escala. Devolve a escala inteira (21 células por pessoa). */
 export function generateSchedule(input: GenerateInput): Schedule {
-  const solver = new Solver(
-    input.config,
-    input.employees,
-    input.employees.map(() => null),
-  );
-  solve(
-    solver,
-    input.employees.map((_, i) => i),
-  );
+  const forward = input.employees.map((_, i) => i);
+  const fresh = (config: StoreConfig) =>
+    new Solver(
+      config,
+      input.employees,
+      input.employees.map(() => null),
+    );
+  // A melhoria local pode parar num ótimo local que depende do ponto de partida (com as semanas de domingo
+  // a sábado, um par sábado + domingo atravessa a virada da semana). Duas partidas fixas (determinísticas),
+  // fica a de menor custo: do zero e a partir da escala do outro padrão de folgas ('together' ↔ 'flexible'),
+  // melhorada com o padrão pedido.
+  const other: StoreConfig = { ...input.config, offPattern: input.config.offPattern === 'flexible' ? 'together' : 'flexible' };
+  const plain = fresh(input.config);
+  solve(plain, forward);
+  const seed = fresh(other);
+  solve(seed, forward);
+  const seeded = fresh(input.config);
+  seeded.loadOffs(seed.off, forward);
+  seeded.improve(forward);
+  const best = seeded.cost(forward) < plain.cost(forward) ? seeded : plain;
   const schedule: Schedule = {};
   input.employees.forEach((e, i) => {
-    schedule[e.id] = solver.row(i);
+    schedule[e.id] = best.row(i);
   });
   return schedule;
 }

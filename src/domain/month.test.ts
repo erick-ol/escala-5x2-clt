@@ -6,7 +6,7 @@ import {
   dayNumber,
   isISODate,
   localToday,
-  mondayOnOrBefore,
+  sundayOnOrBefore,
   monthLabel,
   shiftMonth,
   weekdayOfDate,
@@ -16,13 +16,14 @@ import { generateSchedule } from './generator';
 import { cellOnDate, cycleDayOf, monthWeeks, projectMonth, projectWeek, weekAlertsAsCycle } from './month';
 import { reconcileDocument } from './reconcile';
 import { evaluateRules, linearWorkStreaks } from './rules';
+import { columnOf, weekdayOf } from './time';
 import type { AppDocument, Cell, Schedule } from './types';
 import { parseDocument } from '../state/schema';
 
 const TODAY = new Date('2026-11-14T12:00:00');
-const START = '2026-11-30';
+const START = '2026-11-29';
 
-/** Exemplo com escala gerada e ciclo começando na segunda 30/11/2026. */
+/** Exemplo com escala gerada e ciclo começando no domingo 29/11/2026. */
 function generated(tweak?: (d: AppDocument) => void): AppDocument {
   const base = exampleDocument(TODAY);
   const doc: AppDocument = {
@@ -34,11 +35,11 @@ function generated(tweak?: (d: AppDocument) => void): AppDocument {
   return doc;
 }
 
-/** Escala feita à mão: todos 5x2 (seg–sex), folga sáb + dom, sem buracos de mínimo. */
+/** Escala feita à mão: todos 5x2 (seg–sex), folga dom + sáb, sem buracos de mínimo. */
 function handmade(tweak?: (d: AppDocument) => void): AppDocument {
   return generated((d) => {
     d.config.minimums = [];
-    const week: Cell[] = [...Array(5).fill({ status: 'work' }), { status: 'off' }, { status: 'off' }];
+    const week: Cell[] = [{ status: 'off' }, ...Array(5).fill({ status: 'work' }), { status: 'off' }];
     const schedule: Schedule = {};
     for (const e of d.employees) schedule[e.id] = [...week, ...week, ...week].map((c) => ({ ...c }));
     d.schedule = schedule;
@@ -49,12 +50,14 @@ function handmade(tweak?: (d: AppDocument) => void): AppDocument {
 const override = (date: string, employeeId: string, cell: Cell) => ({ date, employeeId, cell });
 
 describe('datas sem fuso', () => {
-  test('dia da semana, segunda anterior e dia de hoje local', () => {
+  test('dia da semana, domingo anterior e dia de hoje local', () => {
     expect(weekdayOfDate('2026-11-30')).toBe(0);
     expect(weekdayOfDate('2026-12-06')).toBe(6);
     expect(weekdayOfDate('1970-01-01')).toBe(3);
-    expect(mondayOnOrBefore('2026-11-14')).toBe('2026-11-09');
-    expect(mondayOnOrBefore('2026-11-30')).toBe('2026-11-30');
+    expect(sundayOnOrBefore('2026-11-14')).toBe('2026-11-08');
+    expect(sundayOnOrBefore('2026-11-29')).toBe('2026-11-29');
+    expect(sundayOnOrBefore('2026-11-30')).toBe('2026-11-29');
+    expect(sundayOnOrBefore('2027-01-02')).toBe('2026-12-27');
     expect(localToday(new Date(2026, 11, 31, 23, 59))).toBe('2026-12-31');
   });
 
@@ -82,26 +85,28 @@ describe('datas sem fuso', () => {
 
 describe('ciclo projetado nas datas', () => {
   test('dia do ciclo: repete a cada 21 dias, inclusive antes do início e na virada do mês/ano', () => {
-    expect(cycleDayOf(START, '2026-11-30')).toBe(0);
-    expect(cycleDayOf(START, '2026-12-01')).toBe(1);
-    expect(cycleDayOf(START, '2026-12-20')).toBe(20);
-    expect(cycleDayOf(START, '2026-12-21')).toBe(0);
-    expect(cycleDayOf(START, '2026-11-29')).toBe(20);
-    expect(cycleDayOf(START, '2027-01-01')).toBe(32 % 21);
+    expect(cycleDayOf(START, '2026-11-29')).toBe(0);
+    expect(cycleDayOf(START, '2026-11-30')).toBe(1);
+    expect(cycleDayOf(START, '2026-12-19')).toBe(20);
+    expect(cycleDayOf(START, '2026-12-20')).toBe(0);
+    expect(cycleDayOf(START, '2026-11-28')).toBe(20);
+    expect(cycleDayOf(START, '2027-01-01')).toBe(33 % 21);
     // Fevereiro bissexto: 29/02/2028 e 01/03/2028 são dias seguidos do ciclo.
     const a = cycleDayOf(START, '2028-02-29');
     expect(cycleDayOf(START, '2028-03-01')).toBe((a + 1) % 21);
     // O dia da semana sempre bate.
     for (let i = -40; i < 400; i += 7) {
       const date = addDays(START, i);
-      expect(cycleDayOf(START, date) % 7).toBe(weekdayOfDate(date));
+      expect(weekdayOf(cycleDayOf(START, date))).toBe(weekdayOfDate(date));
     }
   });
 
-  test('semanas de um mês: Dez/2026 tem 5 (30/11 a 28/12); Fev/2027 tem 4; Fev/2028 tem 5', () => {
-    expect(monthWeeks(2026, 12)).toEqual(['2026-11-30', '2026-12-07', '2026-12-14', '2026-12-21', '2026-12-28']);
-    expect(monthWeeks(2027, 2)).toEqual(['2027-02-01', '2027-02-08', '2027-02-15', '2027-02-22']);
+  test('semanas de um mês começam no domingo: Dez/2026 tem 5 (29/11 a 27/12); Fev/2026 tem 4; Fev/2027 e Fev/2028 têm 5', () => {
+    expect(monthWeeks(2026, 12)).toEqual(['2026-11-29', '2026-12-06', '2026-12-13', '2026-12-20', '2026-12-27']);
+    expect(monthWeeks(2026, 2)).toEqual(['2026-02-01', '2026-02-08', '2026-02-15', '2026-02-22']);
+    expect(monthWeeks(2027, 2)).toEqual(['2027-01-31', '2027-02-07', '2027-02-14', '2027-02-21', '2027-02-28']);
     expect(monthWeeks(2028, 2)).toHaveLength(5);
+    for (const sunday of [...monthWeeks(2026, 12), ...monthWeeks(2027, 2)]) expect(weekdayOfDate(sunday)).toBe(6);
   });
 
   test('a projeção do mês usa a semana certa do ciclo em cada semana real', () => {
@@ -124,13 +129,13 @@ describe('ciclo projetado nas datas', () => {
     expect(cellOnDate(doc, 'rosa', addDays(date, 21))).toMatchObject({ cell: { status: 'work' }, source: 'cycle' });
     expect(cellOnDate(doc, 'andreza', date).source).toBe('cycle');
     const week = projectWeek(doc, date)!;
-    expect(week.overridden.has(`rosa|${weekdayOfDate(date)}`)).toBe(true);
+    expect(week.overridden.has(`rosa|${columnOf(weekdayOfDate(date))}`)).toBe(true);
     expect(week.overridden.size).toBe(1);
   });
 
   test('feriado: todos ficam "loja fechada" e a data não tem mínimo (sem buraco)', () => {
     const date = '2026-12-08';
-    const wd = weekdayOfDate(date);
+    const wd = columnOf(weekdayOfDate(date)); // coluna da terça na semana de domingo a sábado
     // Sem feriado, todos de folga nessa data abrem buracos.
     const empty = generated((d) => {
       d.calendar.dateOverrides = d.employees.map((e) => override(date, e.id, { status: 'off' }));
@@ -169,10 +174,11 @@ describe('regras CLT nas datas reais (modo linear)', () => {
     });
     const month = projectMonth(doc, 2026, 12)!;
     const alert = month.alerts.find((a) => a.kind === 'too-many-offs');
-    expect(alert).toMatchObject({ employeeId: 'rosa', weekStart: '2026-12-07', date: null });
-    expect(alert!.message).toBe('Semana de 07/12 com 3 folgas (máximo 2)');
+    // A semana real vai de domingo 06/12 a sábado 12/12: domingo, quarta e sábado de folga.
+    expect(alert).toMatchObject({ employeeId: 'rosa', weekStart: '2026-12-06', date: null });
+    expect(alert!.message).toBe('Semana de 06/12 com 3 folgas (máximo 2)');
     // O ciclo não mudou: a mesma posição 21 dias depois não tem alerta.
-    expect(month.alerts.filter((a) => a.weekStart === '2026-12-28')).toEqual([]);
+    expect(month.alerts.filter((a) => a.weekStart === '2026-12-27')).toEqual([]);
   });
 
   test('descanso de 11h quebrado na virada do mês (30/11 → 01/12) aparece em dezembro', () => {
@@ -196,15 +202,16 @@ describe('regras CLT nas datas reais (modo linear)', () => {
   test('7 dias seguidos de trabalho atravessando a semana geram "work-streak" na data do 7º dia', () => {
     const doc = handmade((d) => {
       d.calendar.dateOverrides = [
+        override('2026-12-06', 'pedro', { status: 'work' }),
         override('2026-12-12', 'pedro', { status: 'work' }),
         override('2026-12-13', 'pedro', { status: 'work' }),
       ];
     });
     const month = projectMonth(doc, 2026, 12)!;
     const streak = month.alerts.find((a) => a.kind === 'work-streak');
-    // Seg 07/12 a sex 18/12 = 12 dias seguidos; o 7º é domingo 13/12.
-    expect(streak).toMatchObject({ employeeId: 'pedro', date: '2026-12-13', endDate: '2026-12-18' });
-    expect(streak!.message).toMatch(/^12 dias seguidos/);
+    // Dom 06/12 a sex 18/12 = 13 dias seguidos; o 7º é sábado 12/12 (fim da semana de 06/12).
+    expect(streak).toMatchObject({ employeeId: 'pedro', date: '2026-12-12', endDate: '2026-12-18' });
+    expect(streak!.message).toMatch(/^13 dias seguidos/);
     // Aparece nas duas semanas que ele toca.
     const [w2, w3] = [month.weeks[1], month.weeks[2]];
     expect(weekAlertsAsCycle(w2, [streak!])).toEqual([expect.objectContaining({ day: w2.firstDay + 6 })]);
@@ -238,7 +245,7 @@ describe('regras CLT nas datas reais (modo linear)', () => {
 });
 
 describe('documento', () => {
-  test('reconcile descarta ajustes de quem saiu da equipe e leva o início do ciclo para a segunda', () => {
+  test('reconcile descarta ajustes de quem saiu da equipe e leva o início do ciclo para o domingo', () => {
     const doc = generated((d) => {
       d.calendar = {
         cycleStart: '2026-12-03',
@@ -247,7 +254,7 @@ describe('documento', () => {
       };
     });
     const out = reconcileDocument(doc);
-    expect(out.calendar.cycleStart).toBe('2026-11-30');
+    expect(out.calendar.cycleStart).toBe('2026-11-29');
     expect(out.calendar.closedDates).toEqual(['2026-12-25']);
     expect(out.calendar.dateOverrides).toEqual([override('2026-12-02', 'rosa', { status: 'off' })]);
     const removed = reconcileDocument({ ...out, employees: out.employees.filter((e) => e.id !== 'rosa') });
@@ -268,7 +275,7 @@ describe('documento', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     const { calendar } = result.document;
-    expect(weekdayOfDate(calendar.cycleStart)).toBe(0);
+    expect(weekdayOfDate(calendar.cycleStart)).toBe(6);
     expect(calendar.closedDates).toEqual([]);
     expect(calendar.dateOverrides).toEqual([]);
   });

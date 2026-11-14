@@ -39,7 +39,7 @@ export function dayLabel(day: number): string {
   return `${WEEKDAY_NAMES[weekdayOf(day)].toLowerCase()}, semana ${weekOf(day) + 1}`;
 }
 
-/** "Segunda, semana 1" / "Semana 2" / "Ciclo inteiro". */
+/** "Domingo, semana 1" / "Semana 2" / "Ciclo inteiro". */
 export function alertWhere(alert: LegalAlert): string {
   if (alert.day !== null) return `${WEEKDAY_NAMES[weekdayOf(alert.day)]}, semana ${weekOf(alert.day) + 1}`;
   if (alert.week !== null) return `Semana ${alert.week + 1}`;

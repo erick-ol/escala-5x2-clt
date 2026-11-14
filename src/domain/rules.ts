@@ -6,7 +6,7 @@ import {
   WEEKLY_REST_MINUTES,
 } from './legal';
 import { LUNCH_MAX_OFFSET, explicitLunchStart, extraLunchKey, type LunchPlan } from './lunch';
-import { MINUTES_PER_DAY, effectiveHours, formatDuration, grossMinutes, weekOf, workedMinutes } from './time';
+import { MINUTES_PER_DAY, dayOfWeekday, effectiveHours, formatDuration, grossMinutes, weekOf, workedMinutes } from './time';
 import {
   CYCLE_DAYS,
   DAYS_PER_WEEK,
@@ -65,7 +65,7 @@ export interface RulesInput {
    */
   lunchPlan?: LunchPlan;
   /**
-   * Quantidade de dias da linha do tempo (múltiplo de 7, começando numa segunda). Padrão: o ciclo (21 dias).
+   * Quantidade de dias da linha do tempo (múltiplo de 7, começando num domingo). Padrão: o ciclo (21 dias).
    * No modo linear (visão Mês) é o trecho de datas reais conferido.
    */
   days?: number;
@@ -126,7 +126,7 @@ export function workStreaks(worked: boolean[]): { start: DayIndex; length: numbe
   return streaks;
 }
 
-/** Jornada posicionada na linha do tempo do ciclo (minutos desde segunda 00:00 da semana 1). */
+/** Jornada posicionada na linha do tempo do ciclo (minutos desde domingo 00:00 da semana 1). */
 interface Jornada {
   day: DayIndex;
   /** Chave da jornada no LunchPlan. */
@@ -405,7 +405,7 @@ export function evaluateEmployee(input: RulesInput, employeeId: string, options:
   // Rodízio de domingo (R10, R10a). Domingo de loja fechada é descanso para todos (KTD14).
   // Modo linear: mulheres nunca 2 domingos seguidos trabalhados; homens nunca 3 seguidos (alerta no último).
   if (!circular) {
-    const sundays = Array.from({ length: weeks }, (_, w) => w * DAYS_PER_WEEK + SUNDAY).filter((d) => d < days);
+    const sundays = Array.from({ length: weeks }, (_, w) => dayOfWeekday(w, SUNDAY)).filter((d) => d < days);
     sundays.forEach((d, w) => {
       if (employee.isWoman) {
         if (w >= 1 && worked[d] && worked[sundays[w - 1]]) {
@@ -416,7 +416,7 @@ export function evaluateEmployee(input: RulesInput, employeeId: string, options:
       }
     });
   } else {
-    const sundays = Array.from({ length: WEEKS }, (_, w) => w * DAYS_PER_WEEK + SUNDAY);
+    const sundays = Array.from({ length: WEEKS }, (_, w) => dayOfWeekday(w, SUNDAY));
     const workedSunday = sundays.map((d) => worked[d]);
     if (employee.isWoman) {
       // Um domingo de folga a cada 2 semanas: nunca dois domingos seguidos (domingo 3 → domingo 1 do próximo ciclo).

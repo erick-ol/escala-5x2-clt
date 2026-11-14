@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { WEEKDAY_SHORT, type Minimum, type Role } from '../../domain/types';
+import { WEEKDAY_SHORT, WEEK_ORDER, type Minimum, type Role } from '../../domain/types';
 import { useAppStore } from '../../state/store';
 import { findMinimum, pruneMinimums, randomId } from './setupLogic';
 
@@ -112,7 +112,7 @@ export function RolesStep() {
                       </div>
                       {open && (
                         <div id={`days-${key}`} className="setup-perday">
-                          {WEEKDAY_SHORT.map((day, di) => (
+                          {WEEK_ORDER.map((di) => [WEEKDAY_SHORT[di], di] as const).map(([day, di]) => (
                             <label key={day} className="setup-perday-cell">
                               <span>{day}</span>
                               <input

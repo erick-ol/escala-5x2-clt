@@ -1,6 +1,6 @@
 import { countGaps, shiftPhrase, weekdaysPhrase, type SummaryItem } from './coverage';
 import { fitEmployee } from './generator';
-import { findShift, isVirtualShiftId, requiredCount } from './time';
+import { dayOfWeekday, findShift, isVirtualShiftId, requiredCount } from './time';
 import type { Employee, Schedule, StoreConfig, Weekday } from './types';
 
 export type SuggestionKind = 'hire' | 'move-shift' | 'reduce-minimum';
@@ -88,7 +88,7 @@ function reduceSuggestion(input: SuggestionInput, item: SummaryItem, before: num
   const minimum = config.minimums.find((m) => m.roleId === item.roleId && m.shiftId === item.shiftId);
   if (!virtual && !minimum) return null;
   // Exigido hoje em cada dia do padrão (no turno único, o maior mínimo da função entre os turnos).
-  const current = (w: Weekday) => (virtual ? requiredCount(config, w, item.shiftId, item.roleId) : (minimum?.perWeekday[w] ?? 0));
+  const current = (w: Weekday) => (virtual ? requiredCount(config, dayOfWeekday(0, w), item.shiftId, item.roleId) : (minimum?.perWeekday[w] ?? 0));
   const inItem = (w: number) => item.weekdays.includes(w as Weekday);
   const reduced: StoreConfig = {
     ...config,

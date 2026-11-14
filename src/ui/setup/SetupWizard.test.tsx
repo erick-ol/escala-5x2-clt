@@ -104,6 +104,16 @@ describe('SetupWizard', () => {
     expect(screen.getByRole('heading', { name: 'Turnos' })).toBeInTheDocument();
   });
 
+  test('os dias aparecem de domingo a sábado', () => {
+    render(<SetupWizard onFinish={() => {}} />);
+    const names = within(screen.getByRole('group', { name: 'Horário por dia da semana' }))
+      .getAllByRole('checkbox')
+      .map((c) => c.closest('label')?.textContent)
+      .filter((t) => t && !t.includes('Turno único'));
+    expect(names).toEqual(['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']);
+    expect(screen.getByText(/Usa o horário de segunda/)).toBeInTheDocument();
+  });
+
   test('"Copiar para todos os dias" replica o horário de segunda', async () => {
     const user = userEvent.setup();
     render(<SetupWizard onFinish={() => {}} />);
@@ -164,6 +174,8 @@ describe('SetupWizard', () => {
 
     const expanders = screen.getAllByRole('button', { name: 'Ajustar por dia' });
     await user.click(expanders[0]);
+    const perDay = screen.getAllByLabelText(/^Mínimo de Balconista no turno Manhã, /).map((i) => i.getAttribute('aria-label')!.slice(-3));
+    expect(perDay).toEqual(['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']);
     const domingo = screen.getByLabelText('Mínimo de Balconista no turno Manhã, Dom');
     await user.clear(domingo);
     await user.type(domingo, '3');

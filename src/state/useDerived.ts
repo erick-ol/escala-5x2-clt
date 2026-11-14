@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import { computeCoverage, type CoverageResult } from '../domain/coverage';
-import { localToday, mondayOnOrBefore } from '../domain/dates';
+import { localToday, sundayOnOrBefore } from '../domain/dates';
 import { fitEmployee, generateSchedule } from '../domain/generator';
 import { findLunchGaps, planLunches, presenceForDay, type LunchGap, type LunchInput, type LunchPlan, type PresenceBlock } from '../domain/lunch';
 import { evaluateRules, type EmployeeReport, type LegalAlert } from '../domain/rules';
@@ -120,7 +120,7 @@ export function useDerived(): Derived | null {
 /**
  * Gera a escala do zero (regerar): apaga trocas de folga, ajustes de dia, ajustes de data do mês e marcações;
  * mantém o cadastro (KTD13), o início do ciclo no calendário e os feriados.
- * Na primeira geração, o ciclo passa a começar na segunda-feira desta semana.
+ * Na primeira geração, o ciclo passa a começar no domingo desta semana.
  * Devolve a mensagem de erro se o gerador falhar.
  */
 export function runGenerate(now: Date = new Date()): string | null {
@@ -132,7 +132,7 @@ export function runGenerate(now: Date = new Date()): string | null {
     setMarks([]);
     setLunchMarks([]);
     setDateOverrides([]);
-    if (first) setCycleStart(mondayOnOrBefore(localToday(now)));
+    if (first) setCycleStart(sundayOnOrBefore(localToday(now)));
     return null;
   } catch (error) {
     console.error(error);

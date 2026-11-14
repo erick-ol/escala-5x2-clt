@@ -1,19 +1,32 @@
 /** Minutos desde 00:00. Valores >= 1440 não são usados; uma jornada que cruza a meia-noite tem end < start. */
 export type Minutes = number;
 
-/** Índice do dia no ciclo: 0..20 (3 semanas, segunda a domingo). */
+/** Índice do dia no ciclo: 0..20 (3 semanas, domingo a sábado; o dia 0 é um domingo). */
 export type DayIndex = number;
 
-/** 0 = segunda ... 6 = domingo. */
+/**
+ * Dia da semana como índice de `config.days` e `Minimum.perWeekday`: 0 = segunda ... 6 = domingo
+ * (mantido assim para não quebrar dados salvos). A semana do ciclo e da tela vai de domingo a sábado:
+ * veja `WEEK_ORDER`.
+ */
 export type Weekday = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 
 export const WEEKS = 3;
 export const DAYS_PER_WEEK = 7;
 export const CYCLE_DAYS = WEEKS * DAYS_PER_WEEK;
 export const SUNDAY: Weekday = 6;
+export const SATURDAY: Weekday = 5;
+
+/** Ordem dos dias numa semana do ciclo e na tela: domingo, segunda … sábado (índices de `Weekday`). */
+export const WEEK_ORDER: readonly Weekday[] = [6, 0, 1, 2, 3, 4, 5];
 
 export const WEEKDAY_NAMES = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'] as const;
 export const WEEKDAY_SHORT = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'] as const;
+
+/** Nomes por coluna da semana (0 = domingo … 6 = sábado), para cabeçalhos em ordem de tela. */
+export const COLUMN_NAMES = WEEK_ORDER.map((w) => WEEKDAY_NAMES[w]);
+/** "Dom", "Seg" … "Sáb": abreviações por coluna da semana. */
+export const COLUMN_SHORT = WEEK_ORDER.map((w) => WEEKDAY_SHORT[w]);
 
 export interface WorkHours {
   start: Minutes;
@@ -48,7 +61,7 @@ export interface Role {
   name: string;
 }
 
-/** Mínimo de pessoas de uma função num turno, por dia da semana (índice 0 = segunda). */
+/** Mínimo de pessoas de uma função num turno, por dia da semana (índice `Weekday`: 0 = segunda … 6 = domingo). */
 export interface Minimum {
   roleId: string;
   shiftId: string;
@@ -67,7 +80,7 @@ export type OffPattern = 'together' | 'flexible';
 
 export interface StoreConfig {
   name: string;
-  /** 7 entradas, segunda a domingo. */
+  /** 7 entradas, indexadas por `Weekday` (0 = segunda … 6 = domingo); a tela mostra de domingo a sábado. */
   days: StoreDay[];
   shifts: Shift[];
   roles: Role[];
@@ -147,7 +160,7 @@ export interface DateOverride {
 
 /**
  * Projeção do ciclo no calendário (visão Mês): o ciclo de 21 dias se repete a partir de `cycleStart`
- * (sempre uma segunda-feira). Feriados fecham a loja só naquela data e os ajustes valem só na data.
+ * (sempre um domingo). Feriados fecham a loja só naquela data e os ajustes valem só na data.
  */
 export interface CalendarSettings {
   cycleStart: ISODate;
@@ -156,7 +169,11 @@ export interface CalendarSettings {
   dateOverrides: DateOverride[];
 }
 
-export const SCHEMA_VERSION = 1 as const;
+/**
+ * Versão 2: semana de domingo a sábado (o dia 0 do ciclo é um domingo). Documentos da versão 1 (semana de
+ * segunda a domingo) são convertidos na leitura (schema.ts).
+ */
+export const SCHEMA_VERSION = 2 as const;
 
 export interface AppDocument {
   schemaVersion: typeof SCHEMA_VERSION;

@@ -3,7 +3,8 @@ import { evaluateEmployee, evaluateRules, type AlertKind, type LegalAlert, type 
 import type { Cell, Employee, ExtraShift, StoreConfig, WorkHours } from './types';
 
 const h = (hh: number, mm = 0) => hh * 60 + mm;
-const SUNDAYS = [6, 13, 20];
+/** Domingos do ciclo: a semana vai de domingo (dia 0) a sábado (dia 6). */
+const SUNDAYS = [0, 7, 14];
 
 const doc = exampleDocument(new Date('2026-11-14'));
 const baseConfig: StoreConfig = { ...doc.config, regime: '42h' };
@@ -20,9 +21,9 @@ const at = (start: number, end: number, breakMinutes = 60): Cell => ({
   hours: { start, end, breakMinutes },
 });
 
-/** Semana padrão 5x2: segunda a sexta trabalhando, sábado e domingo de folga. */
+/** Semana padrão 5x2 (domingo a sábado): domingo de folga, segunda a sexta trabalhando, sábado de folga. */
 function week5x2(): Cell[] {
-  return [W, W, W, W, W, O, O];
+  return [O, W, W, W, W, W, O];
 }
 
 function cycle(...weeks: Cell[][]): Cell[] {
@@ -87,15 +88,15 @@ describe('motor de regras CLT', () => {
 
   describe('descanso entre jornadas (11h)', () => {
     test('AE4: saída 20:30 na sexta e entrada 5:45 no sábado gera alerta', () => {
-      const cells = withCells(std(), { 4: at(h(13), h(20, 30)), 5: at(h(5, 45), h(13, 30)), 6: O });
+      const cells = withCells(std(), { 5: at(h(13), h(20, 30)), 6: at(h(5, 45), h(13, 30)) });
       // Semana 1 fica com só um dia sem trabalho; o foco aqui é o descanso.
       const list = ofKind(alerts(cells), 'intershift-rest');
       expect(list).toHaveLength(1);
-      expect(list[0].day).toBe(5);
+      expect(list[0].day).toBe(6);
       expect(list[0].message).toBe('Descanso de 9h15 entre jornadas (mínimo 11h)');
     });
 
-    test('virada do ciclo: saída 22:00 no dia 21 e entrada 6:00 no dia 1 gera alerta', () => {
+    test('virada do ciclo: saída 22:00 no dia 21 (sábado) e entrada 6:00 no dia 1 (domingo) gera alerta', () => {
       const cells = withCells(std(), { 20: at(h(14), h(22)), 0: at(h(6), h(14)) });
       const list = ofKind(alerts(cells), 'intershift-rest');
       expect(list).toHaveLength(1);
@@ -104,41 +105,41 @@ describe('motor de regras CLT', () => {
     });
 
     test('exatamente 11h não gera alerta', () => {
-      const cells = withCells(std(), { 0: at(h(9), h(17)), 1: at(h(4), h(12)) });
+      const cells = withCells(std(), { 1: at(h(9), h(17)), 2: at(h(4), h(12)) });
       expect(ofKind(alerts(cells), 'intershift-rest')).toEqual([]);
     });
 
     test('jornada que cruza a meia-noite conta a saída no dia seguinte', () => {
       // Segunda 22:00 a terça 06:00, terça 13:00 → 7h de descanso.
-      const cells = withCells(std(), { 0: at(h(22), h(6)), 1: at(h(13), h(19)) });
+      const cells = withCells(std(), { 1: at(h(22), h(6)), 2: at(h(13), h(19)) });
       const list = ofKind(alerts(cells), 'intershift-rest');
-      expect(list.map((a) => a.day)).toEqual([1]);
+      expect(list.map((a) => a.day)).toEqual([2]);
     });
   });
 
   describe('rodízio de domingo', () => {
     test('AE5: sem R5a trabalhando os 3 domingos gera alerta', () => {
-      const cells = withCells(std(), { 6: W, 13: W, 20: W, 5: O, 12: O, 19: O });
+      const cells = withCells(std(), { 0: W, 7: W, 14: W, 1: O, 8: O, 15: O });
       const list = ofKind(alerts(cells), 'sunday-rotation');
       expect(list).toHaveLength(1);
       expect(list[0].message).toContain('3 semanas');
     });
 
     test('sem R5a trabalhando 2 dos 3 domingos não gera alerta', () => {
-      const cells = withCells(std(), { 6: W, 13: W, 5: O, 12: O });
+      const cells = withCells(std(), { 0: W, 7: W, 1: O, 8: O });
       expect(ofKind(alerts(cells), 'sunday-rotation')).toEqual([]);
     });
 
     test.each([
-      { name: 'domingos 1 e 2', worked: [6, 13], expectedDays: [13] },
-      { name: 'domingos 2 e 3', worked: [13, 20], expectedDays: [20] },
-      { name: 'domingo 3 seguido do domingo 1 (virada)', worked: [20, 6], expectedDays: [6] },
-      { name: 'os 3 domingos', worked: [6, 13, 20], expectedDays: [6, 13, 20] },
+      { name: 'domingos 1 e 2', worked: [0, 7], expectedDays: [7] },
+      { name: 'domingos 2 e 3', worked: [7, 14], expectedDays: [14] },
+      { name: 'domingo 3 seguido do domingo 1 (virada)', worked: [14, 0], expectedDays: [0] },
+      { name: 'os 3 domingos', worked: [0, 7, 14], expectedDays: [0, 7, 14] },
     ])('AE7: com R5a, $name gera alerta', ({ worked, expectedDays }) => {
       const changes: Record<number, Cell> = {};
       for (const d of worked) {
         changes[d] = W;
-        changes[d - 1] = O;
+        changes[d + 1] = O; // a segunda vira folga: a semana continua com 2
       }
       const list = ofKind(alerts(withCells(std(), changes), { employee: { isWoman: true } }), 'sunday-rotation');
       expect(list.map((a) => a.day).sort((a, b) => (a ?? 0) - (b ?? 0))).toEqual(expectedDays);
@@ -146,31 +147,31 @@ describe('motor de regras CLT', () => {
     });
 
     test('com R5a, trabalhando só 1 domingo não gera alerta', () => {
-      const cells = withCells(std(), { 13: W, 12: O });
+      const cells = withCells(std(), { 7: W, 8: O });
       expect(ofKind(alerts(cells, { employee: { isWoman: true } }), 'sunday-rotation')).toEqual([]);
     });
 
     test('domingo de loja fechada conta como descanso', () => {
       const closedSunday = baseConfig.days.map((d, i) => (i === 6 ? { ...d, open: false } : d));
       const cells = cycle(
-        [W, W, W, W, W, O, C],
-        [W, W, W, W, W, O, C],
-        [W, W, W, W, W, O, C],
+        [C, W, W, W, W, W, O],
+        [C, W, W, W, W, W, O],
+        [C, W, W, W, W, W, O],
       );
       expect(alerts(cells, { config: { days: closedSunday }, employee: { isWoman: true } })).toEqual([]);
     });
 
     test('jornada extra num domingo de folga conta como domingo trabalhado', () => {
-      const cells = withCells(std(), { 6: W, 13: W, 5: O, 12: O });
-      const extra: ExtraShift[] = [{ employeeId: 'e1', day: 20, shiftId: 'manha', hours: { start: h(6, 30), end: h(14), breakMinutes: 60 } }];
+      const cells = withCells(std(), { 0: W, 7: W, 1: O, 8: O });
+      const extra: ExtraShift[] = [{ employeeId: 'e1', day: 14, shiftId: 'manha', hours: { start: h(6, 30), end: h(14), breakMinutes: 60 } }];
       expect(ofKind(alerts(cells, { extra }), 'sunday-rotation')).toHaveLength(1);
     });
   });
 
   describe('folgas por semana', () => {
     test.each([
-      { name: '3 folgas', week: [W, W, O, W, O, O, W] as Cell[], kind: 'too-many-offs' as AlertKind },
-      { name: '1 folga', week: [W, W, W, W, W, W, O] as Cell[], kind: 'days-off' as AlertKind },
+      { name: '3 folgas', week: [W, W, W, O, W, O, O] as Cell[], kind: 'too-many-offs' as AlertKind },
+      { name: '1 folga', week: [O, W, W, W, W, W, W] as Cell[], kind: 'days-off' as AlertKind },
     ])('semana com $name gera alerta', ({ week, kind }) => {
       const list = alerts(cycle(week5x2(), week, week5x2()));
       const found = ofKind(list, kind);
@@ -178,20 +179,31 @@ describe('motor de regras CLT', () => {
       expect(found[0].week).toBe(1);
     });
 
+    test('a semana das folgas vai de domingo a sábado', () => {
+      // Domingo, segunda e sábado de folga na mesma semana (domingo a sábado): 3 folgas.
+      const three = ofKind(alerts(cycle(week5x2(), [O, O, W, W, W, W, O], week5x2())), 'too-many-offs');
+      expect(three.map((a) => a.week)).toEqual([1]);
+      expect(three[0].message).toBe('Semana 2 com 3 folgas (máximo 2)');
+      // Sábado, domingo e segunda seguidos caem em semanas diferentes: 2 folgas em cada uma.
+      const across = alerts(cycle([O, W, W, W, W, W, O], [O, O, W, W, W, W, W], week5x2()));
+      expect(ofKind(across, 'too-many-offs')).toEqual([]);
+      expect(ofKind(across, 'days-off')).toEqual([]);
+    });
+
     test('loja fechada no domingo e 1 folga atribuída não gera alerta de folgas', () => {
-      const cells = cycle([W, W, W, W, W, O, C], week5x2(), week5x2());
+      const cells = cycle([C, W, W, W, W, W, O], week5x2(), week5x2());
       const list = alerts(cells);
       expect(ofKind(list, 'days-off')).toEqual([]);
       expect(ofKind(list, 'too-many-offs')).toEqual([]);
     });
 
     test('2 folgas mais domingo fechado (3 dias sem trabalho) não gera alerta', () => {
-      const cells = cycle([W, W, W, W, O, O, C], week5x2(), week5x2());
+      const cells = cycle([C, W, W, W, W, O, O], week5x2(), week5x2());
       expect(ofKind(alerts(cells), 'too-many-offs')).toEqual([]);
     });
 
     test('jornada extra num dia de folga tira o dia da contagem de dias sem trabalho', () => {
-      const extra: ExtraShift[] = [{ employeeId: 'e1', day: 5, shiftId: 'manha', hours: { start: h(6, 30), end: h(14), breakMinutes: 60 } }];
+      const extra: ExtraShift[] = [{ employeeId: 'e1', day: 6, shiftId: 'manha', hours: { start: h(6, 30), end: h(14), breakMinutes: 60 } }];
       const found = ofKind(alerts(std(), { extra }), 'days-off');
       expect(found.map((a) => a.week)).toEqual([0]);
     });
@@ -200,31 +212,31 @@ describe('motor de regras CLT', () => {
   describe('jornada extra (coberto por)', () => {
     test('entra nas horas e no descanso da pessoa', () => {
       // Folga de domingo vira jornada extra das 13:00 às 22:00 (8h); segunda de manhã segue normal.
-      const extra: ExtraShift[] = [{ employeeId: 'e1', day: 6, shiftId: 'tarde', hours: { start: h(13), end: h(22), breakMinutes: 60 } }];
+      const extra: ExtraShift[] = [{ employeeId: 'e1', day: 0, shiftId: 'tarde', hours: { start: h(13), end: h(22), breakMinutes: 60 } }];
       const report = evaluateEmployee(input(std(), { extra }), 'e1');
       expect(report.weeklyMinutes[0]).toBe(h(32, 30) + h(8));
       // Domingo 22:00 → segunda 06:30 = 8h30 de descanso.
-      expect(ofKind(report.alerts, 'intershift-rest').map((a) => a.day)).toEqual([7]);
+      expect(ofKind(report.alerts, 'intershift-rest').map((a) => a.day)).toEqual([1]);
     });
 
     test('ignora jornada extra de outra pessoa', () => {
-      const extra: ExtraShift[] = [{ employeeId: 'outro', day: 5, shiftId: 'manha', hours: { start: h(6, 30), end: h(14), breakMinutes: 60 } }];
+      const extra: ExtraShift[] = [{ employeeId: 'outro', day: 6, shiftId: 'manha', hours: { start: h(6, 30), end: h(14), breakMinutes: 60 } }];
       expect(evaluateEmployee(input(std(), { extra }), 'e1').weeklyMinutes[0]).toBe(h(32, 30));
     });
   });
 
   describe('limite diário e teto semanal', () => {
     test('duas jornadas no mesmo dia (turnos diferentes) somam para a regra de 8h', () => {
-      const extra: ExtraShift[] = [{ employeeId: 'e1', day: 2, shiftId: 'tarde', hours: { start: h(15), end: h(19), breakMinutes: 0 } }];
+      const extra: ExtraShift[] = [{ employeeId: 'e1', day: 3, shiftId: 'tarde', hours: { start: h(15), end: h(19), breakMinutes: 0 } }];
       const list = ofKind(alerts(std(), { extra }), 'daily-limit');
       expect(list).toHaveLength(1);
-      expect(list[0].day).toBe(2);
+      expect(list[0].day).toBe(3);
       expect(list[0].message).toContain('10h30');
     });
 
     test('5 dias de 9h líquidas no regime 42h geram teto semanal e 8h diárias com acordo coletivo', () => {
       const nine = at(h(8), h(18), 60);
-      const week: Cell[] = [nine, nine, nine, nine, nine, O, O];
+      const week: Cell[] = [O, nine, nine, nine, nine, nine, O];
       const list = alerts(cycle(week, week5x2(), week5x2()));
       const weekly = ofKind(list, 'weekly-limit');
       expect(weekly).toHaveLength(1);
@@ -232,7 +244,7 @@ describe('motor de regras CLT', () => {
       expect(weekly[0].message).toContain('45h');
       expect(weekly[0].message).toContain('42h');
       const daily = ofKind(list, 'daily-limit');
-      expect(daily.map((a) => a.day)).toEqual([0, 1, 2, 3, 4]);
+      expect(daily.map((a) => a.day)).toEqual([1, 2, 3, 4, 5]);
       expect(daily[0].message).toMatch(/acordo ou convenção coletiva/);
       expect(daily[0].message).toMatch(/42h/);
     });
@@ -240,13 +252,13 @@ describe('motor de regras CLT', () => {
     test('regime 40h usa o teto de 40h', () => {
       const eight = at(h(8), h(17), 60);
       const day = at(h(8), h(17, 30), 60); // 8h30
-      const week: Cell[] = [eight, eight, eight, eight, day, O, O]; // 40h30
+      const week: Cell[] = [O, eight, eight, eight, eight, day, O]; // 40h30
       expect(ofKind(alerts(cycle(week, week5x2(), week5x2()), { config: { regime: '40h' } }), 'weekly-limit')).toHaveLength(1);
       expect(ofKind(alerts(cycle(week, week5x2(), week5x2()), { config: { regime: '42h' } }), 'weekly-limit')).toEqual([]);
     });
 
     test('exatamente 8h no dia não gera alerta', () => {
-      const cells = withCells(std(), { 0: at(h(8), h(17), 60) });
+      const cells = withCells(std(), { 1: at(h(8), h(17), 60) });
       expect(ofKind(alerts(cells), 'daily-limit')).toEqual([]);
     });
   });
@@ -260,21 +272,21 @@ describe('motor de regras CLT', () => {
       { name: '4h sem intervalo não gera', hours: { start: h(8), end: h(12), breakMinutes: 0 }, expected: 0 },
       { name: 'exatamente 6h com 15min não gera', hours: { start: h(8), end: h(14, 15), breakMinutes: 15 }, expected: 0 },
     ])('jornada de $name', ({ hours, expected }: { hours: WorkHours; expected: number }) => {
-      const cells = withCells(std(), { 0: { status: 'work', hours } });
+      const cells = withCells(std(), { 1: { status: 'work', hours } });
       const list = ofKind(alerts(cells), 'break');
       expect(list).toHaveLength(expected);
-      if (expected) expect(list[0].day).toBe(0);
+      if (expected) expect(list[0].day).toBe(1);
     });
 
     test('mensagem explica o mínimo', () => {
-      const cells = withCells(std(), { 0: at(h(8), h(16), 30) });
+      const cells = withCells(std(), { 1: at(h(8), h(16), 30) });
       expect(ofKind(alerts(cells), 'break')[0].message).toBe('Jornada de 7h30 com intervalo de 30min (mínimo 1h)');
     });
   });
 
   describe('descanso semanal de 35h', () => {
     test('folga única entre saída 20:30 e entrada 5:45 (33h15) gera alerta; duas seguidas não', () => {
-      // Semana 2 (índice 1): folgas na quarta e no sábado, saída 20:30 e entrada 5:45.
+      // Semana 2 (índice 1): folgas na terça e na sexta, saída 20:30 e entrada 5:45; a semana 3 começa num domingo de folga.
       const late = at(h(13), h(20, 30), 60);
       const early = at(h(5, 45), h(13, 30), 60);
       const split: Cell[] = [W, late, O, early, late, O, early];
@@ -288,7 +300,8 @@ describe('motor de regras CLT', () => {
     });
 
     test('descanso que só invade a semana por poucas horas não vale para ela', () => {
-      // Semana 0 com sábado/domingo de folga; semana 1 só com folgas isoladas e longas jornadas.
+      // Semana 0 com sábado de folga; semana 1 só com folgas isoladas e longas jornadas: o descanso de sábado
+      // da semana 0 só entra 5h45 no domingo da semana 1.
       const late = at(h(13), h(20, 30), 60);
       const early = at(h(5, 45), h(13, 30), 60);
       const split: Cell[] = [early, W, late, O, early, late, O];
@@ -296,7 +309,7 @@ describe('motor de regras CLT', () => {
       expect(list.map((a) => a.week)).toEqual([1]);
     });
 
-    test('virada do ciclo: folga de sábado/domingo na semana 3 ainda vale', () => {
+    test('virada do ciclo: folga de sábado da semana 3 emenda no domingo da semana 1', () => {
       expect(ofKind(alerts(std()), 'weekly-rest')).toEqual([]);
     });
 
@@ -314,7 +327,7 @@ describe('motor de regras CLT', () => {
     const result = evaluateRules({
       config: baseConfig,
       employees: [a, b],
-      schedule: { a: std(), b: withCells(std(), { 6: W, 13: W, 4: O, 11: O }) },
+      schedule: { a: std(), b: withCells(std(), { 0: W, 7: W, 5: O, 12: O }) },
     });
     expect(result.a.alerts).toEqual([]);
     expect(result.b.alerts.map((x) => x.kind)).toEqual(['sunday-rotation']);
@@ -322,34 +335,34 @@ describe('motor de regras CLT', () => {
     expect(SUNDAYS).toContain(result.b.alerts[0].day);
   });
   test('dia de trabalho com turno inexistente gera alerta em vez de contar 0h em silêncio', () => {
-    const cells = withCells(std(), { 0: { status: 'work', shiftId: 'removido' } });
+    const cells = withCells(std(), { 1: { status: 'work', shiftId: 'removido' } });
     const list = ofKind(alerts(cells, { employee: { shiftId: 'manha' } }), 'no-hours');
     expect(list).toHaveLength(1);
-    expect(list[0].day).toBe(0);
+    expect(list[0].day).toBe(1);
   });
 
   test('intervalo acima de 2h numa jornada de mais de 6h gera alerta; 2h exatas não', () => {
-    expect(ofKind(alerts(withCells(std(), { 0: at(h(8), h(18), 150) })), 'break')).toHaveLength(1);
-    expect(ofKind(alerts(withCells(std(), { 0: at(h(8), h(17), 120) })), 'break')).toHaveLength(0);
+    expect(ofKind(alerts(withCells(std(), { 1: at(h(8), h(18), 150) })), 'break')).toHaveLength(1);
+    expect(ofKind(alerts(withCells(std(), { 1: at(h(8), h(17), 120) })), 'break')).toHaveLength(0);
   });
 
   test('rodízio de domingo é checado pelas células mesmo com o domingo marcado como fechado na configuração', () => {
-    const allSundays = withCells(std(), { 6: W, 13: W, 20: W, 4: O, 11: O, 18: O });
+    const allSundays = withCells(std(), { 0: W, 7: W, 14: W, 5: O, 12: O, 19: O });
     const days = baseConfig.days.map((d, w) => (w === 6 ? { ...d, open: false } : d));
     expect(ofKind(alerts(allSundays, { config: { days } }), 'sunday-rotation')).toHaveLength(1);
-    expect(ofKind(alerts(cycle([W, W, W, W, W, O, C], [W, W, W, W, W, O, C], [W, W, W, W, W, O, C]), { config: { days } }), 'sunday-rotation')).toHaveLength(0);
+    expect(ofKind(alerts(cycle([C, W, W, W, W, W, O], [C, W, W, W, W, W, O], [C, W, W, W, W, W, O]), { config: { days } }), 'sunday-rotation')).toHaveLength(0);
   });
   test('regime de 42h aceita 8h24 por dia (liminar do STF); 40h aceita só 8h', () => {
-    const eight24 = withCells(std(), { 0: at(h(6, 30), h(15, 54), 60) });
+    const eight24 = withCells(std(), { 1: at(h(6, 30), h(15, 54), 60) });
     expect(ofKind(alerts(eight24, { config: { regime: '42h' } }), 'daily-limit')).toHaveLength(0);
     expect(ofKind(alerts(eight24, { config: { regime: '40h' } }), 'daily-limit')).toHaveLength(1);
-    const over = withCells(std(), { 0: at(h(6, 30), h(16, 0), 60) });
+    const over = withCells(std(), { 1: at(h(6, 30), h(16, 0), 60) });
     expect(ofKind(alerts(over, { config: { regime: '42h' } }), 'daily-limit')[0].message).toMatch(/8h24/);
   });
 
   test('cinco dias de 8h24 somam 42h e não passam do teto de 42h', () => {
     const day = at(h(6, 30), h(15, 54), 60);
-    const week = [day, day, day, day, day, O, O];
+    const week = [O, day, day, day, day, day, O];
     const report = evaluateEmployee(input(cycle(week, week, week), { config: { regime: '42h' } }), 'e1');
     expect(report.weeklyMinutes).toEqual([42 * 60, 42 * 60, 42 * 60]);
     expect(report.alerts.filter((a) => a.kind === 'weekly-limit' || a.kind === 'daily-limit')).toHaveLength(0);

@@ -15,6 +15,7 @@ import {
   workedMinutes,
 } from '../../domain/time';
 import {
+  COLUMN_SHORT,
   DAYS_PER_WEEK,
   WEEKDAY_SHORT,
   WEEKS,
@@ -205,7 +206,7 @@ function cycleModels(document: AppDocument): PersonalModel[] {
 
 function monthModels(document: AppDocument, year: number, month: number): PersonalModel[] {
   if (!document.schedule) return [];
-  const projected = monthWeeks(year, month).map((monday) => projectWeek(document, monday)!);
+  const projected = monthWeeks(year, month).map((sunday) => projectWeek(document, sunday)!);
   const roleName = new Map(document.config.roles.map((r) => [r.id, r.name]));
   const periodLabel = monthLabel(year, month);
   const sources = projected.map(
@@ -222,14 +223,14 @@ function monthModels(document: AppDocument, year: number, month: number): Person
       let minutes = 0;
       const days = w.dates.map((date: ISODate, i) => {
         const d = w.firstDay + i;
-        const label = `${WEEKDAY_SHORT[i]} ${formatDayMonth(date)}`;
+        const label = `${COLUMN_SHORT[i]} ${formatDayMonth(date)}`;
         const r = buildDay(sources[wi], e, roleName, d, label, date, !isInMonth(date, year, month));
         minutes += r.minutes;
         return r.day;
       });
       return {
-        key: w.monday,
-        label: `Semana de ${formatDayMonth(w.monday)}`,
+        key: w.sunday,
+        label: `Semana de ${formatDayMonth(w.sunday)}`,
         minutes,
         total: formatDuration(minutes),
         days,

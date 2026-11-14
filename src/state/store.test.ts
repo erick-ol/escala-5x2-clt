@@ -129,9 +129,11 @@ describe('store', () => {
     const doc = exampleDocument(now());
     doc.config.days[6] = { ...doc.config.days[6], open: false };
     const row = defaultRow(doc.config);
-    expect(row[6].status).toBe('closed');
-    expect(row[13].status).toBe('closed');
-    expect(row[0].status).toBe('work');
+    // Dia 0, 7 e 14 são os domingos do ciclo; o sábado (dia 6) continua aberto.
+    expect(row[0].status).toBe('closed');
+    expect(row[7].status).toBe('closed');
+    expect(row[14].status).toBe('closed');
+    expect(row[6].status).toBe('work');
   });
 
   test('começar do zero limpa tudo', () => {
@@ -143,14 +145,16 @@ describe('store', () => {
     expect(storage.data.has(STORAGE_KEY)).toBe(false);
   });
 
-  test('calendário: início do ciclo vai para a segunda, feriado liga e desliga, ajuste de quem sai é removido', () => {
+  test('calendário: início do ciclo vai para o domingo, feriado liga e desliga, ajuste de quem sai é removido', () => {
     const s = createAppStore(memoryStorage(), now);
     s.getState().loadExample();
-    expect(s.getState().document.calendar.cycleStart).toBe('2026-11-09');
+    expect(s.getState().document.calendar.cycleStart).toBe('2026-11-08');
     s.getState().setCycleStart('2026-12-03');
-    expect(s.getState().document.calendar.cycleStart).toBe('2026-11-30');
+    expect(s.getState().document.calendar.cycleStart).toBe('2026-11-29');
+    s.getState().setCycleStart('2026-11-29');
+    expect(s.getState().document.calendar.cycleStart).toBe('2026-11-29');
     s.getState().setCycleStart('não é data');
-    expect(s.getState().document.calendar.cycleStart).toBe('2026-11-30');
+    expect(s.getState().document.calendar.cycleStart).toBe('2026-11-29');
 
     s.getState().setClosedDate('2026-12-25', true);
     s.getState().setClosedDate('2026-12-08', true);

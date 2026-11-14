@@ -10,7 +10,7 @@ import {
   type LunchInput,
 } from './lunch';
 import { evaluateEmployee } from './rules';
-import { effectiveHours, grossMinutes } from './time';
+import { effectiveHours, grossMinutes, isSingleShiftDay, weekdayOf } from './time';
 import type { Cell, Employee, Schedule, StoreConfig } from './types';
 import { CYCLE_DAYS } from './types';
 
@@ -190,7 +190,8 @@ describe('presenceForDay', () => {
   it('traz a função do dia, incluindo a segunda área', () => {
     const input = exampleInput();
     const plan = planLunches(input);
-    const f = input.flex![0];
+    // Primeiro dia na segunda área fora do domingo de turno único (lá o almoço é de 15min).
+    const f = input.flex!.find((x) => !isSingleShiftDay(input.config, weekdayOf(x.day)))!;
     expect(f).toBeDefined();
     const blocks = presenceForDay(input, plan, f.day);
     const block = blocks.find((b) => b.employeeId === f.employeeId)!;
@@ -198,10 +199,11 @@ describe('presenceForDay', () => {
     expect(block.shiftId).toBe(f.shiftId);
     expect(block.breakPlanned).toBe(true);
     expect(block.breakEnd! - block.breakStart!).toBe(60);
-    // Quem não está na segunda área conta na principal.
+    // Quem não está na segunda área nesse dia conta na principal; quem está conta na função coberta.
+    const flexToday = new Map(input.flex!.filter((x) => x.day === f.day).map((x) => [x.employeeId, x.roleId]));
     for (const b of blocks) {
       const e = input.employees.find((x) => x.id === b.employeeId)!;
-      if (b.employeeId !== f.employeeId) expect(b.roleId).toBe(e.roleId);
+      expect(b.roleId).toBe(flexToday.get(b.employeeId) ?? e.roleId);
     }
   });
 

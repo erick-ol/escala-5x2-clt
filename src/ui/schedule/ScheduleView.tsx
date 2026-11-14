@@ -236,7 +236,7 @@ export function ScheduleView({ onExport, initialError = null }: ScheduleViewProp
             <h2 id={`sv-week-${week}`} className="sv-week-title">
               Semana {week + 1}
             </h2>
-            <p className="sv-dayhint hint">Toque no dia (Seg, Ter…) para ver os horários e o almoço de cada pessoa.</p>
+            <p className="sv-dayhint hint">Toque no dia (Dom, Seg…) para ver os horários e o almoço de cada pessoa.</p>
             <WeekGrid
               key={week}
               week={week}

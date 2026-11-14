@@ -3,7 +3,7 @@ import { computeCoverage, countGaps } from './coverage';
 import { exampleDocument } from './example';
 import { fitEmployee, generateSchedule } from './generator';
 import { evaluateRules } from './rules';
-import { weekOf } from './time';
+import { dayOfWeekday, weekOf, weekdayOf } from './time';
 import { CYCLE_DAYS, DAYS_PER_WEEK, SUNDAY, WEEKS, type Cell, type Employee, type OffPattern, type Schedule, type StoreConfig } from './types';
 import { defaultRow } from '../state/store';
 
@@ -63,7 +63,7 @@ function offsInWeek(schedule: Schedule, id: string, week: number): number {
 
 function sundaysOff(schedule: Schedule, id: string): number {
   let n = 0;
-  for (let w = 0; w < WEEKS; w++) if (schedule[id][w * DAYS_PER_WEEK + SUNDAY].status !== 'work') n++;
+  for (let w = 0; w < WEEKS; w++) if (schedule[id][dayOfWeekday(w, SUNDAY)].status !== 'work') n++;
   return n;
 }
 
@@ -238,7 +238,7 @@ describe('generateSchedule', () => {
     const schedule = generateSchedule({ config, employees });
     for (const e of employees) {
       for (let w = 0; w < WEEKS; w++) {
-        expect(schedule[e.id][w * DAYS_PER_WEEK + SUNDAY].status).toBe('closed');
+        expect(schedule[e.id][dayOfWeekday(w, SUNDAY)].status).toBe('closed');
         expect(offsInWeek(schedule, e.id, w)).toBe(1);
       }
     }
@@ -273,7 +273,7 @@ describe('generateSchedule', () => {
     const input = team(3, 1, { shifts: 1, roles: 1 });
     const schedule = generateSchedule(input);
     for (let w = 0; w < WEEKS; w++) {
-      const off = input.employees.filter((e) => schedule[e.id][w * DAYS_PER_WEEK + SUNDAY].status === 'off').length;
+      const off = input.employees.filter((e) => schedule[e.id][dayOfWeekday(w, SUNDAY)].status === 'off').length;
       expect(off, `domingo da semana ${w + 1}`).toBeLessThan(3);
     }
     expect(countGaps(input.config, input.employees, schedule)).toBe(0);
@@ -341,7 +341,7 @@ describe('fitEmployee', () => {
       );
     const after = tarde(fitted, all);
     expect(after.length).toBeLessThan(tarde(schedule, employees).length);
-    expect(after.every((g) => g.day % DAYS_PER_WEEK === SUNDAY)).toBe(true);
+    expect(after.every((g) => weekdayOf(g.day) === SUNDAY)).toBe(true);
   });
 
   it('funciona mesmo sem linha prévia da pessoa na escala', () => {

@@ -1,7 +1,8 @@
 import { computeCoverage, type CoverageResult } from './coverage';
-import { addDays, daysBetween, daysInMonth, formatDayMonth, mondayOnOrBefore, toISODate, weekdayOfDate } from './dates';
+import { addDays, daysBetween, daysInMonth, formatDayMonth, sundayOnOrBefore, toISODate, weekdayOfDate } from './dates';
 import { findLunchGaps, planLunches, type LunchGap, type LunchInput, type LunchPlan } from './lunch';
 import { evaluateRules, type LegalAlert } from './rules';
+import { columnOf } from './time';
 import {
   CYCLE_DAYS,
   DAYS_PER_WEEK,
@@ -12,13 +13,14 @@ import {
   type ISODate,
   type LunchMark,
   type Schedule,
+  type Weekday,
 } from './types';
 
 /**
  * Visão Mês: o ciclo de 21 dias projetado nas datas reais.
  *
- * - Dia do ciclo de uma data = (dias desde `calendar.cycleStart`) mod 21. Como o ciclo começa numa segunda,
- *   o dia da semana sempre bate e cada semana de segunda a domingo cai inteira numa semana do ciclo.
+ * - Dia do ciclo de uma data = (dias desde `calendar.cycleStart`) mod 21. Como o ciclo começa num domingo,
+ *   o dia da semana sempre bate e cada semana de domingo a sábado cai inteira numa semana do ciclo.
  * - Célula efetiva numa data: feriado (loja fechada para todos) > ajuste da data > ciclo.
  * - Cobertura e almoço: para cada semana real, um documento "sintético" com o ciclo em que a semana
  *   correspondente foi trocada pelas células das datas (as outras duas semanas ficam de folga e são ignoradas)
@@ -45,20 +47,21 @@ export function cycleWeekOf(cycleStart: ISODate, date: ISODate): number {
   return Math.floor(cycleDayOf(cycleStart, date) / DAYS_PER_WEEK);
 }
 
-export function weekDates(monday: ISODate): ISODate[] {
-  return Array.from({ length: DAYS_PER_WEEK }, (_, i) => addDays(monday, i));
+/** As 7 datas da semana que começa no domingo `sunday`. */
+export function weekDates(sunday: ISODate): ISODate[] {
+  return Array.from({ length: DAYS_PER_WEEK }, (_, i) => addDays(sunday, i));
 }
 
 export function monthDates(year: number, month: number): ISODate[] {
   return Array.from({ length: daysInMonth(year, month) }, (_, i) => toISODate(year, month, i + 1));
 }
 
-/** Segundas-feiras das semanas (segunda a domingo) que têm ao menos um dia no mês. */
+/** Domingos das semanas (domingo a sábado) que têm ao menos um dia no mês. */
 export function monthWeeks(year: number, month: number): ISODate[] {
-  const first = mondayOnOrBefore(toISODate(year, month, 1));
+  const first = sundayOnOrBefore(toISODate(year, month, 1));
   const last = toISODate(year, month, daysInMonth(year, month));
   const weeks: ISODate[] = [];
-  for (let monday = first; monday <= last; monday = addDays(monday, DAYS_PER_WEEK)) weeks.push(monday);
+  for (let sunday = first; sunday <= last; sunday = addDays(sunday, DAYS_PER_WEEK)) weeks.push(sunday);
   return weeks;
 }
 
@@ -111,7 +114,8 @@ export function cellOnDate(doc: AppDocument, employeeId: string, date: ISODate):
 }
 
 export interface ProjectedWeek {
-  monday: ISODate;
+  /** Domingo que abre a semana (domingo a sábado). */
+  sunday: ISODate;
   dates: ISODate[];
   /** Semana do ciclo (0..2) que cai nestas datas. */
   cycleWeek: number;
@@ -119,7 +123,7 @@ export interface ProjectedWeek {
   firstDay: DayIndex;
   /** Feriado em cada uma das 7 datas. */
   holidays: boolean[];
-  /** Células com ajuste da data: `${employeeId}|${i}` (i = 0 segunda … 6 domingo). */
+  /** Células com ajuste da data: `${employeeId}|${i}` (i = 0 domingo … 6 sábado). */
   overridden: Set<string>;
   /**
    * Documento sintético: o ciclo com a semana `cycleWeek` trocada pelas células destas datas, as outras
@@ -141,10 +145,10 @@ export interface ProjectedWeek {
 const sameLunch = (m: Pick<LunchMark, 'day' | 'roleId' | 'from' | 'to'>, g: Pick<LunchGap, 'day' | 'roleId' | 'from' | 'to'>) =>
   m.day === g.day && m.roleId === g.roleId && m.from === g.from && m.to === g.to;
 
-function buildWeek(doc: AppDocument, monday: ISODate, overrides: Map<string, Cell>, holidaySet: ReadonlySet<ISODate>): ProjectedWeek {
+function buildWeek(doc: AppDocument, sunday: ISODate, overrides: Map<string, Cell>, holidaySet: ReadonlySet<ISODate>): ProjectedWeek {
   const { config, employees } = doc;
-  const dates = weekDates(monday);
-  const cycleWeek = cycleWeekOf(doc.calendar.cycleStart, monday);
+  const dates = weekDates(sunday);
+  const cycleWeek = cycleWeekOf(doc.calendar.cycleStart, sunday);
   const firstDay = cycleWeek * DAYS_PER_WEEK;
   const holidays = dates.map((d) => holidaySet.has(d) && !!config.days[weekdayOfDate(d)]?.open);
   const inWeek = (day: number) => day >= firstDay && day < firstDay + DAYS_PER_WEEK && !holidays[day - firstDay];
@@ -165,7 +169,7 @@ function buildWeek(doc: AppDocument, monday: ISODate, overrides: Map<string, Cel
   const synthConfig = holidays.some(Boolean)
     ? {
         ...config,
-        days: config.days.map((d, wd) => (holidays[wd] ? { ...d, open: false, singleShift: false } : d)),
+        days: config.days.map((d, wd) => (holidays[columnOf(wd as Weekday)] ? { ...d, open: false, singleShift: false } : d)),
       }
     : config;
   const marks = doc.marks.filter((m) => inWeek(m.day));
@@ -196,7 +200,7 @@ function buildWeek(doc: AppDocument, monday: ISODate, overrides: Map<string, Cel
   const isCovered = (g: LunchGap) => lunchMarks.some((m) => sameLunch(m, g));
 
   return {
-    monday,
+    sunday,
     dates,
     cycleWeek,
     firstDay,
@@ -211,10 +215,10 @@ function buildWeek(doc: AppDocument, monday: ISODate, overrides: Map<string, Cel
   };
 }
 
-/** Uma semana real (segunda a domingo) projetada; null se ainda não há escala. */
-export function projectWeek(doc: AppDocument, monday: ISODate): ProjectedWeek | null {
+/** Uma semana real (domingo a sábado) projetada; null se ainda não há escala. */
+export function projectWeek(doc: AppDocument, sunday: ISODate): ProjectedWeek | null {
   if (!doc.schedule) return null;
-  return buildWeek(doc, mondayOnOrBefore(monday), overrideIndex(doc), new Set(doc.calendar.closedDates));
+  return buildWeek(doc, sundayOnOrBefore(sunday), overrideIndex(doc), new Set(doc.calendar.closedDates));
 }
 
 /** Alerta das regras CLT com as datas reais. */
@@ -223,7 +227,7 @@ export interface MonthAlert extends LegalAlert {
   date: ISODate | null;
   /** Última data do trecho (sequência de dias trabalhados), quando passa de um dia. */
   endDate?: ISODate;
-  /** Segunda-feira da semana do alerta. */
+  /** Domingo da semana do alerta. */
   weekStart: ISODate | null;
 }
 
@@ -256,14 +260,14 @@ export function projectMonth(doc: AppDocument, year: number, month: number): Mon
   if (!doc.schedule) return null;
   const overrides = overrideIndex(doc);
   const holidaySet = new Set(doc.calendar.closedDates);
-  const mondays = monthWeeks(year, month);
-  const before = Array.from({ length: PAD_WEEKS_BEFORE }, (_, i) => addDays(mondays[0], -DAYS_PER_WEEK * (PAD_WEEKS_BEFORE - i)));
-  const after = Array.from({ length: PAD_WEEKS_AFTER }, (_, i) => addDays(mondays[mondays.length - 1], DAYS_PER_WEEK * (i + 1)));
-  const rangeMondays = [...before, ...mondays, ...after];
-  const projected = rangeMondays.map((m) => buildWeek(doc, m, overrides, holidaySet));
-  const weeks = projected.slice(PAD_WEEKS_BEFORE, PAD_WEEKS_BEFORE + mondays.length);
-  const rangeStart = rangeMondays[0];
-  const days = rangeMondays.length * DAYS_PER_WEEK;
+  const sundays = monthWeeks(year, month);
+  const before = Array.from({ length: PAD_WEEKS_BEFORE }, (_, i) => addDays(sundays[0], -DAYS_PER_WEEK * (PAD_WEEKS_BEFORE - i)));
+  const after = Array.from({ length: PAD_WEEKS_AFTER }, (_, i) => addDays(sundays[sundays.length - 1], DAYS_PER_WEEK * (i + 1)));
+  const rangeSundays = [...before, ...sundays, ...after];
+  const projected = rangeSundays.map((s) => buildWeek(doc, s, overrides, holidaySet));
+  const weeks = projected.slice(PAD_WEEKS_BEFORE, PAD_WEEKS_BEFORE + sundays.length);
+  const rangeStart = rangeSundays[0];
+  const days = rangeSundays.length * DAYS_PER_WEEK;
   const dates = monthDates(year, month);
   const inMonth = (date: ISODate) => isInMonth(date, year, month);
 
@@ -286,7 +290,7 @@ export function projectMonth(doc: AppDocument, year: number, month: number): Mon
 
   const raw = evaluateRules(
     { config: doc.config, employees: doc.employees, schedule, extraShifts, lunchPlan, days },
-    { circular: false, weekName: (w) => `Semana de ${formatDayMonth(rangeMondays[w])}` },
+    { circular: false, weekName: (w) => `Semana de ${formatDayMonth(rangeSundays[w])}` },
   );
 
   const dateAt = (index: number) => addDays(rangeStart, index);
@@ -295,14 +299,14 @@ export function projectMonth(doc: AppDocument, year: number, month: number): Mon
       for (let d = a.day; d <= (a.endDay ?? a.day); d++) if (inMonth(dateAt(d))) return true;
       return false;
     }
-    if (a.week !== null) return weekDates(rangeMondays[a.week]).some(inMonth);
+    if (a.week !== null) return weekDates(rangeSundays[a.week]).some(inMonth);
     return false;
   };
   const toMonthAlert = (a: LegalAlert): MonthAlert => ({
     ...a,
     date: a.day === null ? null : dateAt(a.day),
     ...(a.endDay !== undefined ? { endDate: dateAt(a.endDay) } : {}),
-    weekStart: a.week === null ? null : rangeMondays[a.week],
+    weekStart: a.week === null ? null : rangeSundays[a.week],
   });
 
   const reports: Record<string, MonthEmployeeReport> = {};
@@ -339,7 +343,7 @@ export function weekAlertsAsCycle(week: ProjectedWeek, alerts: MonthAlert[]): Le
   const result: LegalAlert[] = [];
   for (const a of alerts) {
     if (a.date === null) {
-      if (a.weekStart !== week.monday) continue;
+      if (a.weekStart !== week.sunday) continue;
       result.push({ kind: a.kind, employeeId: a.employeeId, day: null, week: week.cycleWeek, message: a.message });
       continue;
     }

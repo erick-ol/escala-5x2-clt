@@ -6,7 +6,11 @@ import {
   formatTime,
   grossMinutes,
   isValidHours,
+  columnOf,
+  dayOfWeekday,
   parseTime,
+  sortWeekdays,
+  weekOf,
   weekdayOf,
   workedMinutes,
   wrapDay,
@@ -44,9 +48,20 @@ describe('tempo', () => {
     expect(defaultBreakFor(480, 720)).toBe(0); // 4h
   });
 
-  test('dias do ciclo: semana e circularidade', () => {
-    expect(weekdayOf(6)).toBe(6);
-    expect(weekdayOf(7)).toBe(0);
+  test('dias do ciclo: semana de domingo a sábado e circularidade', () => {
+    // Dia 0 é domingo (Weekday 6), dia 1 é segunda (Weekday 0), dia 6 é sábado (Weekday 5).
+    expect(weekdayOf(0)).toBe(6);
+    expect(weekdayOf(1)).toBe(0);
+    expect(weekdayOf(6)).toBe(5);
+    expect(weekdayOf(7)).toBe(6);
+    expect(weekdayOf(20)).toBe(5);
+    expect(weekOf(6)).toBe(0);
+    expect(weekOf(7)).toBe(1);
+    expect(columnOf(6)).toBe(0);
+    expect(columnOf(5)).toBe(6);
+    expect(dayOfWeekday(1, 6)).toBe(7);
+    expect(dayOfWeekday(2, 5)).toBe(20);
+    expect(sortWeekdays([5, 0, 6, 3])).toEqual([6, 0, 3, 5]);
     expect(wrapDay(21)).toBe(0);
     expect(wrapDay(-1)).toBe(20);
   });
@@ -55,13 +70,13 @@ describe('tempo', () => {
     const doc = exampleDocument(new Date('2026-11-14'));
     const rosa = doc.employees.find((e) => e.id === 'rosa')!;
     const andreza = doc.employees.find((e) => e.id === 'andreza')!;
-    expect(effectiveHours(doc.config, andreza, { status: 'work' }, 0)?.start).toBe(390);
-    expect(effectiveHours(doc.config, rosa, { status: 'work' }, 0)?.start).toBe(345);
+    expect(effectiveHours(doc.config, andreza, { status: 'work' }, 1)?.start).toBe(390);
+    expect(effectiveHours(doc.config, rosa, { status: 'work' }, 1)?.start).toBe(345);
     expect(
-      effectiveHours(doc.config, rosa, { status: 'work', hours: { start: 420, end: 900, breakMinutes: 60 } }, 0)?.start,
+      effectiveHours(doc.config, rosa, { status: 'work', hours: { start: 420, end: 900, breakMinutes: 60 } }, 1)?.start,
     ).toBe(420);
     // Rosa num turno diferente do cadastro usa o horário daquele turno
-    expect(effectiveHours(doc.config, rosa, { status: 'work', shiftId: 'tarde' }, 0)?.start).toBe(780);
+    expect(effectiveHours(doc.config, rosa, { status: 'work', shiftId: 'tarde' }, 1)?.start).toBe(780);
   });
 
   test('valida horários', () => {

@@ -5,12 +5,13 @@ import { exampleDocument } from '../../domain/example';
 import { generateSchedule } from '../../domain/generator';
 import { WEEKDAY_NAMES, type AppDocument } from '../../domain/types';
 import { appStore } from '../../state/store';
+import { weekdayOf } from '../../domain/time';
 import { ScheduleView } from './ScheduleView';
 
-const START = '2026-11-30';
+const START = '2026-11-29';
 const doc = () => appStore.getState().document;
 
-/** Exemplo com escala gerada e o ciclo começando na segunda 30/11/2026. */
+/** Exemplo com escala gerada e o ciclo começando no domingo 29/11/2026. */
 function seed(tweak?: (d: AppDocument) => void) {
   const base = exampleDocument(new Date('2026-11-14T12:00:00'));
   const d: AppDocument = {
@@ -30,11 +31,11 @@ async function openMonth() {
   return { user, onExport };
 }
 
-/** Primeiro dia (0 = segunda) da semana 1 do ciclo em que a Rosa trabalha, com a data em dezembro. */
+/** Primeiro dia da semana 1 do ciclo (0 = domingo 29/11) em que a Rosa trabalha, com a data em dezembro. */
 function rosaWorkDay() {
-  const i = doc().schedule!.rosa.findIndex((c, day) => day >= 1 && day < 7 && c.status === 'work');
+  const i = doc().schedule!.rosa.findIndex((c, day) => day >= 2 && day < 7 && c.status === 'work');
   const date = addDays(START, i);
-  return { i, date, dm: `${date.slice(8, 10)}/${date.slice(5, 7)}`, weekday: WEEKDAY_NAMES[i].toLowerCase() };
+  return { i, date, dm: `${date.slice(8, 10)}/${date.slice(5, 7)}`, weekday: WEEKDAY_NAMES[weekdayOf(i)].toLowerCase() };
 }
 
 beforeEach(() => {
@@ -54,17 +55,25 @@ describe('Visão Mês', () => {
     await openMonth();
     expect(screen.getByRole('button', { name: 'Mês' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('heading', { name: 'Dezembro de 2026' })).toBeInTheDocument();
-    expect(screen.getByText(/O ciclo começa em:/)).toHaveTextContent('O ciclo começa em: segunda, 30/11/2026');
+    expect(screen.getByText(/O ciclo começa em:/)).toHaveTextContent('O ciclo começa em: domingo, 29/11/2026');
     const titles = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent);
     expect(titles).toEqual([
-      '30/11 – 06/12 · Semana 1 do ciclo',
-      '07/12 – 13/12 · Semana 2 do ciclo',
-      '14/12 – 20/12 · Semana 3 do ciclo',
-      '21/12 – 27/12 · Semana 1 do ciclo',
-      '28/12 – 03/01 · Semana 2 do ciclo',
+      '29/11 – 05/12 · Semana 1 do ciclo',
+      '06/12 – 12/12 · Semana 2 do ciclo',
+      '13/12 – 19/12 · Semana 3 do ciclo',
+      '20/12 – 26/12 · Semana 1 do ciclo',
+      '27/12 – 02/01 · Semana 2 do ciclo',
     ]);
-    const first = screen.getByRole('grid', { name: 'Escala de 30/11 a 06/12' });
+    const first = screen.getByRole('grid', { name: 'Escala de 29/11 a 05/12' });
+    // Colunas de domingo a sábado, com as datas reais.
+    const heads = within(first)
+      .getAllByRole('columnheader')
+      .slice(1)
+      .map((h) => h.querySelector('.wg-dayhead-name')?.textContent);
+    expect(heads).toEqual(['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']);
+    expect(within(first).getByRole('button', { name: /^Domingo, 29\/11, turno único, fora do mês: opções da data$/ })).toBeInTheDocument();
     expect(within(first).getByRole('button', { name: /^Segunda, 30\/11, fora do mês: opções da data$/ })).toBeInTheDocument();
+    expect(within(first).getByRole('button', { name: /^Sábado, 05\/12: opções da data$/ })).toBeInTheDocument();
     expect(within(first).getByRole('button', { name: /^Terça, 01\/12: opções da data$/ })).toBeInTheDocument();
     // A visão Ciclo continua igual.
     await userEvent.setup().click(screen.getByRole('button', { name: 'Ciclo' }));
@@ -76,12 +85,12 @@ describe('Visão Mês', () => {
     const { user } = await openMonth();
     await user.click(screen.getByRole('button', { name: 'Próximo mês' }));
     expect(screen.getByRole('heading', { name: 'Janeiro de 2027' })).toBeInTheDocument();
-    expect(screen.getByRole('grid', { name: 'Escala de 28/12 a 03/01' })).toBeInTheDocument();
-    expect(screen.getAllByRole('heading', { level: 3 })[0]).toHaveTextContent('28/12 – 03/01 · Semana 2 do ciclo');
+    expect(screen.getByRole('grid', { name: 'Escala de 27/12 a 02/01' })).toBeInTheDocument();
+    expect(screen.getAllByRole('heading', { level: 3 })[0]).toHaveTextContent('27/12 – 02/01 · Semana 2 do ciclo');
     await user.click(screen.getByRole('button', { name: 'Mês anterior' }));
     await user.click(screen.getByRole('button', { name: 'Mês anterior' }));
     expect(screen.getByRole('heading', { name: 'Novembro de 2026' })).toBeInTheDocument();
-    expect(screen.getByRole('grid', { name: 'Escala de 26/10 a 01/11' })).toBeInTheDocument();
+    expect(screen.getByRole('grid', { name: 'Escala de 01/11 a 07/11' })).toBeInTheDocument();
   });
 
   test('editar uma célula no mês grava um ajuste só da data, sem mudar o ciclo; "Voltar ao ciclo" desfaz', async () => {
@@ -150,30 +159,31 @@ describe('Visão Mês', () => {
     expect(screen.getByText('Loja fechada nesta data (feriado).')).toBeInTheDocument();
   });
 
-  test('mudar o início do ciclo leva para a segunda e muda a projeção', async () => {
+  test('mudar o início do ciclo leva para o domingo e muda a projeção', async () => {
     seed();
     const { user } = await openMonth();
     await user.click(screen.getByRole('button', { name: 'alterar' }));
-    fireEvent.change(screen.getByLabelText('Início do ciclo (segunda-feira)'), { target: { value: '2026-12-09' } });
-    expect(doc().calendar.cycleStart).toBe('2026-12-07');
-    expect(screen.getAllByRole('heading', { level: 3 })[0]).toHaveTextContent('30/11 – 06/12 · Semana 3 do ciclo');
-    expect(screen.getAllByRole('heading', { level: 3 })[1]).toHaveTextContent('07/12 – 13/12 · Semana 1 do ciclo');
+    fireEvent.change(screen.getByLabelText('Início do ciclo (domingo)'), { target: { value: '2026-12-09' } });
+    expect(doc().calendar.cycleStart).toBe('2026-12-06');
+    expect(screen.getByText(/O ciclo começa em:/)).toHaveTextContent('O ciclo começa em: domingo, 06/12/2026');
+    expect(screen.getAllByRole('heading', { level: 3 })[0]).toHaveTextContent('29/11 – 05/12 · Semana 3 do ciclo');
+    expect(screen.getAllByRole('heading', { level: 3 })[1]).toHaveTextContent('06/12 – 12/12 · Semana 1 do ciclo');
   });
 
   test('alertas do mês usam datas e o resumo conta só o mês', async () => {
     seed((d) => {
-      // Rosa trabalha de 07/12 a 13/12 sem folga: semana sem os 2 dias de descanso.
+      // Rosa trabalha de domingo 06/12 a sábado 12/12 sem folga: semana sem os 2 dias de descanso.
       d.calendar.dateOverrides = Array.from({ length: 7 }, (_, i) => ({
-        date: addDays('2026-12-07', i),
+        date: addDays('2026-12-06', i),
         employeeId: 'rosa',
         cell: { status: 'work' as const },
       }));
     });
     const { user } = await openMonth();
-    await user.click(screen.getByRole('button', { name: /alertas? legais?/ }));
+    await user.click(screen.getByRole('button', { name: /^\d+ alertas? legais?/ }));
     const list = screen.getByRole('dialog', { name: /alertas? no mês/ });
-    expect(list).toHaveTextContent('Rosa · Semana de 07/12');
-    expect(list).toHaveTextContent('Semana de 07/12 com 0 dias sem trabalho (mínimo 2)');
+    expect(list).toHaveTextContent('Rosa · Semana de 06/12');
+    expect(list).toHaveTextContent('Semana de 06/12 com 0 dias sem trabalho (mínimo 2)');
   });
 
   test('regerar apaga os ajustes de data e mantém início do ciclo e feriados', async () => {

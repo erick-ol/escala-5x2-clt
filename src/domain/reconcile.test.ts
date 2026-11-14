@@ -2,7 +2,8 @@ import { exampleDocument } from './example';
 import { generateSchedule } from './generator';
 import { reconcileDocument } from './reconcile';
 import { evaluateRules } from './rules';
-import type { AppDocument } from './types';
+import { weekdayOf } from './time';
+import { SUNDAY, type AppDocument } from './types';
 
 function generated(): AppDocument {
   const doc = exampleDocument(new Date('2026-11-14'));
@@ -17,14 +18,14 @@ describe('reconcileDocument', () => {
 
   test('domingo passou a fechado: células de domingo viram "loja fechada" e sem alerta de rodízio', () => {
     const doc = generated();
-    doc.schedule!.richard = doc.schedule!.richard.map((c, day) => (day % 7 === 6 ? { status: 'work' } : c));
+    doc.schedule!.richard = doc.schedule!.richard.map((c, day) => (weekdayOf(day) === SUNDAY ? { status: 'work' } : c));
     const closed: AppDocument = {
       ...doc,
       config: { ...doc.config, days: doc.config.days.map((d, w) => (w === 6 ? { ...d, open: false } : d)) },
     };
     const out = reconcileDocument(closed);
     for (const row of Object.values(out.schedule!)) {
-      expect([6, 13, 20].map((d) => row[d].status)).toEqual(['closed', 'closed', 'closed']);
+      expect([0, 7, 14].map((d) => row[d].status)).toEqual(['closed', 'closed', 'closed']);
     }
     const reports = evaluateRules({ config: out.config, employees: out.employees, schedule: out.schedule! });
     expect(reports.richard.alerts.filter((a) => a.kind === 'sunday-rotation')).toHaveLength(0);
@@ -50,7 +51,8 @@ describe('reconcileDocument', () => {
 
   test('ajuste de turno que aponta para turno removido é descartado', () => {
     const doc = generated();
-    const day = doc.schedule!.andreza.findIndex((c) => c.status === 'work');
+    // Primeiro dia de trabalho fora do domingo (no domingo de turno único o ajuste de turno já sai por outra regra).
+    const day = doc.schedule!.andreza.findIndex((c, d) => c.status === 'work' && weekdayOf(d) !== SUNDAY);
     doc.schedule!.andreza[day] = { status: 'work', shiftId: 'noite', hours: { start: 1200, end: 1380, breakMinutes: 15 } };
     const out = reconcileDocument(doc);
     expect(out.schedule!.andreza[day]).toEqual({ status: 'work' });

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { joinPt } from '../../domain/coverage';
 import { defaultBreakFor, formatDuration, formatTime, isSingleShiftDay, workedMinutes } from '../../domain/time';
-import { WEEKDAY_NAMES, type Shift, type Weekday } from '../../domain/types';
+import { WEEKDAY_NAMES, WEEK_ORDER, type Shift } from '../../domain/types';
 import { useAppStore } from '../../state/store';
 import { longestOpenDay, pruneMinimums, randomId, suggestShifts } from './setupLogic';
 import { TimeInput } from './TimeInput';
@@ -13,7 +13,7 @@ export function ShiftsStep() {
   const updateConfig = useAppStore((s) => s.updateConfig);
   const [count, setCount] = useState(() => Math.min(MAX_SHIFTS, Math.max(1, config.shifts.length || 2)));
   const longest = longestOpenDay(config.days);
-  const singleDays = WEEKDAY_NAMES.filter((_, w) => isSingleShiftDay(config, w as Weekday)).map((n) => n.toLowerCase());
+  const singleDays = WEEK_ORDER.filter((w) => isSingleShiftDay(config, w)).map((w) => WEEKDAY_NAMES[w].toLowerCase());
 
   const setShifts = (shifts: Shift[]) => {
     updateConfig({ shifts, minimums: pruneMinimums({ ...config, shifts }) });

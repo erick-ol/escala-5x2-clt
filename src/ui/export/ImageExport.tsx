@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { toBlob } from 'html-to-image';
-import { DAYS_PER_WEEK, WEEKDAY_SHORT, WEEKS } from '../../domain/types';
+import { COLUMN_SHORT, DAYS_PER_WEEK, WEEKS } from '../../domain/types';
 import { GapCellContent, ScheduleCellContent, cellClass } from './PrintSheet';
 import { DOWNLOADED_NOTICE, shareOrDownload, slugify } from './download';
 import type { ExportModel, ExportRow, GapRow, LegendItem, MonthExportModel } from './exportModel';
@@ -51,7 +51,7 @@ export function cyclePages(model: ExportModel): ImagePage[] {
       shareTitle: imageTitle(model.storeName, week),
       fileName: imageFileName(model.storeName, week),
       ready: `Imagem da semana ${week + 1} pronta.`,
-      headers: [...WEEKDAY_SHORT],
+      headers: [...COLUMN_SHORT],
       rows: model.rows.map((r) => ({ ...r, cells: slice(r.cells) })),
       gapRows: model.gapRows.map((r) => ({ ...r, cells: slice(r.cells) })),
     };
@@ -60,11 +60,11 @@ export function cyclePages(model: ExportModel): ImagePage[] {
 
 export function monthPages(model: MonthExportModel): ImagePage[] {
   return model.weeks.map((w) => ({
-    key: w.monday,
+    key: w.sunday,
     button: w.label,
     heading: `Escala ${w.label}`,
     shareTitle: `${model.storeName} — Escala ${w.label}`,
-    fileName: `escala-${slugify(model.storeName)}-${w.monday}.png`,
+    fileName: `escala-${slugify(model.storeName)}-${w.sunday}.png`,
     ready: `Imagem de ${w.label} pronta.`,
     headers: w.headers,
     dim: w.inMonth.map((x) => !x),

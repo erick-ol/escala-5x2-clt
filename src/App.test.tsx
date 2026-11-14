@@ -78,7 +78,7 @@ describe('App', () => {
 
     const after = doc().schedule!;
     expect(after.rosa).toEqual(before.rosa);
-    expect(after.rosa[2].status).toBe('off');
+    expect(after.rosa[3].status).toBe('off'); // quarta da semana 1 (dia 3)
     for (let w = 0; w < 3; w++) {
       const offs = after.bia.slice(w * 7, w * 7 + 7).filter((c) => c.status === 'off').length;
       expect(offs).toBe(2);
@@ -88,13 +88,13 @@ describe('App', () => {
 
   test('reconfigurar e confirmar regera e apaga as trocas de folga', async () => {
     seedWithSchedule();
-    appStore.getState().setCell('rosa', 2, { status: 'off' });
+    appStore.getState().setCell('rosa', 3, { status: 'off' });
     const user = userEvent.setup();
     render(<App />);
     await user.click(screen.getByRole('button', { name: 'Configurar' }));
     await finishWizard(user);
     await user.click(screen.getByRole('button', { name: 'Regerar e perder ajustes' }));
-    expect(doc().schedule!.rosa[2].status).toBe('work');
+    expect(doc().schedule!.rosa[3].status).toBe('work');
     expect(screen.getByRole('grid', { name: 'Escala da semana 1' })).toBeInTheDocument();
   });
 

@@ -1,11 +1,11 @@
-import { isISODate, localToday, mondayOnOrBefore, weekdayOfDate } from './dates';
+import { isISODate, localToday, isSunday, sundayOnOrBefore, weekdayOfDate } from './dates';
 import { fitEmployee } from './generator';
 import { findShift, isSingleShiftDay, weekdayOf } from './time';
 import type { AppDocument, CalendarSettings, Cell, DateOverride, Employee, Schedule } from './types';
 
 /**
  * Projeção no calendário coerente com a configuração e a equipe:
- * - início do ciclo inválido vira a segunda-feira desta semana; fora de segunda, volta para a segunda anterior;
+ * - início do ciclo inválido vira o domingo desta semana; fora de domingo, volta para o domingo anterior;
  * - feriados inválidos ou repetidos saem (ficam em ordem);
  * - ajustes de data de quem saiu da equipe, de data inválida, repetidos (vale o último) ou num dia da semana
  *   em que a loja não abre saem; ajuste "loja fechada" num dia aberto sai; turno removido ou em dia de
@@ -14,13 +14,13 @@ import type { AppDocument, CalendarSettings, Cell, DateOverride, Employee, Sched
 function reconcileCalendar(doc: AppDocument, employeeIds: ReadonlySet<string>, shiftIds: ReadonlySet<string>): CalendarSettings {
   const { config } = doc;
   const current = doc.calendar as CalendarSettings | undefined;
-  const fallback = mondayOnOrBefore(localToday());
+  const fallback = sundayOnOrBefore(localToday());
   if (!current) return { cycleStart: fallback, closedDates: [], dateOverrides: [] };
 
   let changed = false;
   let cycleStart = current.cycleStart;
   if (!isISODate(cycleStart)) cycleStart = fallback;
-  else if (weekdayOfDate(cycleStart) !== 0) cycleStart = mondayOnOrBefore(cycleStart);
+  else if (!isSunday(cycleStart)) cycleStart = sundayOnOrBefore(cycleStart);
   if (cycleStart !== current.cycleStart) changed = true;
 
   const closedDates = [...new Set(current.closedDates.filter(isISODate))].sort();

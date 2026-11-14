@@ -97,8 +97,14 @@ export function weekdayOfDate(date: ISODate): Weekday {
   return ((((dayNumber(date) + 3) % 7) + 7) % 7) as Weekday;
 }
 
-export function mondayOnOrBefore(date: ISODate): ISODate {
-  return addDays(date, -weekdayOfDate(date));
+/** Domingo da semana (domingo a sábado) da data: a própria data, se já for domingo. */
+export function sundayOnOrBefore(date: ISODate): ISODate {
+  return addDays(date, -((weekdayOfDate(date) + 1) % 7));
+}
+
+/** A data é um domingo? */
+export function isSunday(date: ISODate): boolean {
+  return weekdayOfDate(date) === 6;
 }
 
 /** Data de hoje no fuso de quem usa. */

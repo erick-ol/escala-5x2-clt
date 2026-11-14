@@ -29,8 +29,9 @@ function fixture(): AppDocument {
     employees,
     schedule,
     marks: [
-      { day: 0, shiftId: 'tarde', roleId: 'balconista', slot: 0, coveredBy: { kind: 'owner' } },
-      { day: 1, shiftId: 'tarde', roleId: 'balconista', slot: 0, coveredBy: { kind: 'employee', employeeId: 'richard' } },
+      // Segunda e terça da semana 1 (o dia 0 é o domingo de turno único).
+      { day: 1, shiftId: 'tarde', roleId: 'balconista', slot: 0, coveredBy: { kind: 'owner' } },
+      { day: 2, shiftId: 'tarde', roleId: 'balconista', slot: 0, coveredBy: { kind: 'employee', employeeId: 'richard' } },
     ],
   };
 }
@@ -80,6 +81,10 @@ describe('ExportPanel', () => {
     for (const row of rows) expect(row.querySelectorAll('td')).toHaveLength(CYCLE_DAYS);
     expect(sheet).toHaveTextContent('Mercado do exemplo');
     expect(sheet).toHaveTextContent('Semana 3');
+    // Cada semana vai de domingo a sábado.
+    const days = Array.from(sheet.querySelectorAll('thead tr:nth-child(2) th')).map((th) => th.textContent);
+    expect(days).toEqual(Array.from({ length: 3 }, () => ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']).flat());
+    expect(weekImage().querySelector('th')?.parentElement?.textContent).toMatch(/Dom.*Seg.*Ter.*Qua.*Qui.*Sex.*Sáb/);
   });
 
   it('exportação não contém alertas nem "Funcionária mulher"', async () => {
@@ -106,9 +111,9 @@ describe('ExportPanel', () => {
     expect(within(sheet).getAllByText('Dono/família').length).toBeGreaterThan(0);
     const gapRow = within(sheet).getByText('Balconista · Tarde').closest('tr')!;
     const cells = gapRow.querySelectorAll('td');
-    expect(cells[0]).toHaveTextContent('Dono/família');
-    expect(cells[1]).toHaveTextContent('Richard');
-    expect(cells[2]).toHaveTextContent('Falta');
+    expect(cells[1]).toHaveTextContent('Dono/família');
+    expect(cells[2]).toHaveTextContent('Richard');
+    expect(cells[3]).toHaveTextContent('Falta');
     expect(weekImage()).toHaveTextContent('Dono/família');
   });
 
@@ -118,9 +123,9 @@ describe('ExportPanel', () => {
     const legend = sheet.querySelector('.ps-legend')!;
     expect(legend).toHaveTextContent('U = Turno único Dom 07:00–13:00');
     const doc = appStore.getState().document;
-    const worker = doc.employees.find((e) => doc.schedule![e.id][6].status === 'work')!;
+    const worker = doc.employees.find((e) => doc.schedule![e.id][0].status === 'work')!;
     const row = within(sheet).getAllByTestId('print-row').find((r) => r.textContent?.includes(worker.name))!;
-    const sunday = row.querySelectorAll('td')[6];
+    const sunday = row.querySelectorAll('td')[0];
     expect(sunday).toHaveTextContent('U');
     expect(sunday).toHaveTextContent('07:00–13:00');
     expect(weekImage()).toHaveTextContent('Turno único');
@@ -239,7 +244,7 @@ describe('ExportPanel no mês', () => {
       document: {
         ...doc,
         calendar: {
-          cycleStart: '2026-11-30',
+          cycleStart: '2026-11-29',
           closedDates: ['2026-12-25'],
           dateOverrides: [{ date: '2026-12-02', employeeId: 'rosa', cell: { status: 'off' } }],
         },
@@ -249,7 +254,7 @@ describe('ExportPanel no mês', () => {
 
   it('folha do mês tem todas as datas do mês, semana a semana, com o feriado', async () => {
     render(<ExportPanel month={{ year: 2026, month: 12 }} onClose={vi.fn()} />);
-    await screen.findByText('Imagem de 30/11 – 06/12 pronta.');
+    await screen.findByText('Imagem de 29/11 – 05/12 pronta.');
     expect(screen.getByRole('button', { name: 'Mês: Dezembro de 2026' })).toHaveAttribute('aria-pressed', 'true');
     const sheet = printSheet();
     expect(sheet).toHaveAttribute('data-scope', 'month');
@@ -257,34 +262,44 @@ describe('ExportPanel no mês', () => {
     for (let d = 1; d <= 31; d++) expect(sheet).toHaveTextContent(`${String(d).padStart(2, '0')}/12`);
     const weeks = within(sheet).getAllByTestId('print-week');
     expect(weeks).toHaveLength(5);
-    expect(weeks[0]).toHaveTextContent('30/11 – 06/12');
+    expect(weeks[0]).toHaveTextContent('29/11 – 05/12');
     expect(weeks[0]).toHaveTextContent('Semana 1 do ciclo');
+    expect(Array.from(weeks[0].querySelectorAll('thead th')).map((th) => th.textContent?.slice(0, 3)).slice(-7)).toEqual([
+      'Dom',
+      'Seg',
+      'Ter',
+      'Qua',
+      'Qui',
+      'Sex',
+      'Sáb',
+    ]);
     const doc = appStore.getState().document;
     for (const w of weeks) {
       const rows = within(w).getAllByTestId('print-row');
       expect(rows).toHaveLength(doc.employees.length);
       for (const row of rows) expect(row.querySelectorAll('td')).toHaveLength(7);
     }
-    // Feriado de 25/12 (sexta): coluna 4 da semana de 21/12.
-    for (const row of within(weeks[3]).getAllByTestId('print-row')) expect(row.querySelectorAll('td')[4]).toHaveTextContent('Fer.');
+    // Feriado de 25/12 (sexta): coluna 5 da semana de 20/12 (domingo a sábado).
+    for (const row of within(weeks[3]).getAllByTestId('print-row')) expect(row.querySelectorAll('td')[5]).toHaveTextContent('Fer.');
     // Ajuste da data: Rosa de folga em 02/12 (quarta).
     const rosa = within(weeks[0]).getAllByTestId('print-row').find((r) => r.textContent?.includes('Rosa'))!;
-    expect(rosa.querySelectorAll('td')[2]).toHaveTextContent('F');
+    expect(rosa.querySelectorAll('td')[3]).toHaveTextContent('F');
     expect(sheet.textContent).not.toMatch(/alerta/i);
   });
 
   it('imagens por semana com datas reais; dá para voltar ao ciclo', async () => {
     setShare(true, () => Promise.resolve());
     render(<ExportPanel month={{ year: 2026, month: 12 }} onClose={vi.fn()} />);
-    await screen.findByText('Imagem de 30/11 – 06/12 pronta.');
-    expect(weekImage()).toHaveTextContent('Escala 30/11 – 06/12');
-    expect(weekImage()).toHaveTextContent('Seg 30/11');
-    await userEvent.click(screen.getByRole('button', { name: '07/12 – 13/12' }));
-    await screen.findByText('Imagem de 07/12 – 13/12 pronta.');
+    await screen.findByText('Imagem de 29/11 – 05/12 pronta.');
+    expect(weekImage()).toHaveTextContent('Escala 29/11 – 05/12');
+    expect(weekImage()).toHaveTextContent('Dom 29/11');
+    expect(weekImage()).toHaveTextContent('Sáb 05/12');
+    await userEvent.click(screen.getByRole('button', { name: '06/12 – 12/12' }));
+    await screen.findByText('Imagem de 06/12 – 12/12 pronta.');
     await userEvent.click(screen.getByRole('button', { name: 'Compartilhar' }));
     const arg = (navigator.share as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0] as ShareData;
-    expect(arg.title).toBe('Mercado do exemplo — Escala 07/12 – 13/12');
-    expect(arg.files?.[0].name).toBe('escala-mercado-do-exemplo-2026-12-07.png');
+    expect(arg.title).toBe('Mercado do exemplo — Escala 06/12 – 12/12');
+    expect(arg.files?.[0].name).toBe('escala-mercado-do-exemplo-2026-12-06.png');
 
     await userEvent.click(screen.getByRole('button', { name: 'Ciclo de 3 semanas' }));
     await screen.findByText('Imagem da semana 1 pronta.');
@@ -309,7 +324,7 @@ describe('ExportPanel por funcionário', () => {
     await screen.findByText('Imagem de Andreza pronta.');
     expect(preview()).toHaveTextContent('Andreza');
     expect(preview()).toHaveTextContent('Ciclo de 3 semanas a partir de');
-    expect(preview()).toHaveTextContent('Semana 1 · Seg');
+    expect(preview()).toHaveTextContent('Semana 1 · Dom');
 
     await userEvent.selectOptions(screen.getByLabelText('Funcionário'), 'Rosa');
     await screen.findByText('Imagem de Rosa pronta.');
@@ -408,7 +423,7 @@ describe('ExportPanel por funcionário no mês', () => {
       document: {
         ...doc,
         calendar: {
-          cycleStart: '2026-11-30',
+          cycleStart: '2026-11-29',
           closedDates: ['2026-12-25'],
           dateOverrides: [{ date: '2026-12-02', employeeId: 'rosa', cell: { status: 'off' } }],
         },
@@ -422,7 +437,7 @@ describe('ExportPanel por funcionário no mês', () => {
     await userEvent.selectOptions(screen.getByLabelText('Funcionário'), 'Rosa');
     await screen.findByText('Imagem de Rosa pronta.');
     expect(preview()).toHaveTextContent('Dezembro de 2026');
-    expect(preview()).toHaveTextContent('Semana de 30/11');
+    expect(preview()).toHaveTextContent('Semana de 29/11');
     const rows = within(preview()).getAllByTestId('personal-day');
     expect(rows).toHaveLength(35);
     const row = (label: string) => rows.find((r) => r.querySelector('th')?.textContent === label)!;
@@ -438,7 +453,7 @@ describe('ExportPanel por funcionário no mês', () => {
     // Voltar ao ciclo troca o período da escala individual.
     await userEvent.click(screen.getByRole('button', { name: 'Ciclo de 3 semanas' }));
     await screen.findByText('Imagem de Rosa pronta.');
-    expect(preview()).toHaveTextContent('Ciclo de 3 semanas a partir de 30/11/2026');
+    expect(preview()).toHaveTextContent('Ciclo de 3 semanas a partir de 29/11/2026');
     expect(within(preview()).getAllByTestId('personal-day')).toHaveLength(CYCLE_DAYS);
   });
 });

@@ -9,6 +9,7 @@ import {
   type StoreConfig,
   type Weekday,
   type WorkHours,
+  WEEK_ORDER,
 } from './types';
 
 export const MINUTES_PER_DAY = 1440;
@@ -56,12 +57,34 @@ export function defaultBreakFor(start: Minutes, end: Minutes): Minutes {
   return 0;
 }
 
-export function weekdayOf(day: DayIndex): Weekday {
-  return (((day % DAYS_PER_WEEK) + DAYS_PER_WEEK) % DAYS_PER_WEEK) as Weekday;
+/** Posição do dia na semana (0 = domingo … 6 = sábado). */
+export function columnOfDay(day: DayIndex): number {
+  return ((day % DAYS_PER_WEEK) + DAYS_PER_WEEK) % DAYS_PER_WEEK;
 }
 
+/** Dia da semana (`Weekday`, 0 = segunda … 6 = domingo) de um dia do ciclo: o dia 0 é um domingo. */
+export function weekdayOf(day: DayIndex): Weekday {
+  return WEEK_ORDER[columnOfDay(day)];
+}
+
+/** Posição de um dia da semana na semana de domingo a sábado (domingo = 0, sábado = 6). */
+export function columnOf(weekday: Weekday): number {
+  return (weekday + 1) % DAYS_PER_WEEK;
+}
+
+/** Dia (do ciclo ou da linha do tempo) de um dia da semana numa semana (ex.: o domingo da semana 2 é o dia 14). */
+export function dayOfWeekday(week: number, weekday: Weekday): DayIndex {
+  return week * DAYS_PER_WEEK + columnOf(weekday);
+}
+
+/** Semana (domingo a sábado) de um dia: 0, 1 ou 2 no ciclo. */
 export function weekOf(day: DayIndex): number {
   return Math.floor(day / DAYS_PER_WEEK);
+}
+
+/** Dias da semana em ordem de domingo a sábado (para listas e frases). */
+export function sortWeekdays(weekdays: Weekday[]): Weekday[] {
+  return [...weekdays].sort((a, b) => columnOf(a) - columnOf(b));
 }
 
 /** Dia circular do ciclo (KTD5): -1 vira 20, 21 vira 0. */

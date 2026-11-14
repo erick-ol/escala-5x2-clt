@@ -1,8 +1,11 @@
-import { WEEKDAY_NAMES, type StoreDay } from '../../domain/types';
+import { WEEKDAY_NAMES, WEEK_ORDER, type StoreDay, type Weekday } from '../../domain/types';
 import { useAppStore } from '../../state/store';
 import { OffPatternPicker } from './OffPatternPicker';
 import { RegimePicker } from './RegimePicker';
 import { TimeInput } from './TimeInput';
+
+/** Índice de segunda-feira em `config.days`. */
+const MONDAY: Weekday = 0;
 
 export function StoreHoursStep() {
   const config = useAppStore((s) => s.document.config);
@@ -12,9 +15,12 @@ export function StoreHoursStep() {
     updateConfig({ days: config.days.map((d, i) => (i === index ? { ...d, ...patch } : d)) });
   };
 
-  /** Copia aberto/abre/fecha de segunda; o "turno único" de cada dia fica como está. */
+  /**
+   * Copia aberto/abre/fecha de segunda (o dia típico; a lista começa no domingo, que costuma ser diferente);
+   * o "turno único" de cada dia fica como está.
+   */
   const copyToAll = () => {
-    const { open, opensAt, closesAt } = config.days[0];
+    const { open, opensAt, closesAt } = config.days[MONDAY];
     updateConfig({ days: config.days.map((d) => ({ ...d, open, opensAt, closesAt })) });
   };
 
@@ -55,7 +61,8 @@ export function StoreHoursStep() {
           <span>Abre</span>
           <span>Fecha</span>
         </div>
-        {config.days.map((day, i) => {
+        {WEEK_ORDER.map((i) => {
+          const day = config.days[i];
           const name = WEEKDAY_NAMES[i];
           const invalid = day.open && day.closesAt <= day.opensAt;
           return (

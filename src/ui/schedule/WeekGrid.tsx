@@ -23,7 +23,7 @@ export interface Highlight {
 
 /** Visão Mês: a semana mostra datas reais (cabeçalhos, rótulos, feriados e ajustes da data). */
 export interface WeekDates {
-  /** As 7 datas, de segunda a domingo. */
+  /** As 7 datas, de domingo a sábado. */
   dates: ISODate[];
   /** Data dentro do mês escolhido (fora dele, a coluna fica apagada). */
   inMonth: boolean[];

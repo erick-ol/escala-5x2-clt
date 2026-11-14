@@ -11,15 +11,16 @@ import {
   singleShiftOf,
 } from '../../domain/time';
 import {
+  COLUMN_SHORT,
   CYCLE_DAYS,
   DAYS_PER_WEEK,
   WEEKDAY_SHORT,
+  WEEK_ORDER,
   type AppDocument,
   type ISODate,
   type Schedule,
   type Shift,
   type StoreConfig,
-  type Weekday,
   type WorkHours,
 } from '../../domain/types';
 
@@ -132,9 +133,9 @@ function buildLegend(document: AppDocument): LegendItem[] {
     times: formatRange(s),
   }));
   // Dias de turno único: todos no horário da loja ("U = Turno único Dom 07:00–13:00").
-  const singles = WEEKDAY_SHORT.flatMap((label, w) => {
-    const shift = singleShiftOf(config, w as Weekday);
-    return shift ? [`${label} ${formatRange(shift)}`] : [];
+  const singles = WEEK_ORDER.flatMap((w) => {
+    const shift = singleShiftOf(config, w);
+    return shift ? [`${WEEKDAY_SHORT[w]} ${formatRange(shift)}`] : [];
   });
   if (singles.length > 0) legend.push({ initial: uInitial, name: SINGLE_SHIFT_NAME, times: singles.join(', ') });
   return legend;
@@ -223,14 +224,15 @@ export function buildExportModel(document: AppDocument): ExportModel {
   return { storeName: displayStoreName(document), hasSchedule: true, legend, rows, gapRows };
 }
 
-/** Uma semana real (segunda a domingo) da exportação do mês. */
+/** Uma semana real (domingo a sábado) da exportação do mês. */
 export interface MonthExportWeek {
-  monday: ISODate;
+  /** Domingo que abre a semana. */
+  sunday: ISODate;
   dates: ISODate[];
-  /** "30/11 – 06/12" */
+  /** "29/11 – 05/12" */
   label: string;
   cycleWeek: number;
-  /** "Seg 30/11" */
+  /** "Dom 29/11" */
   headers: string[];
   /** Data dentro do mês (fora dele, a coluna sai apagada). */
   inMonth: boolean[];
@@ -260,11 +262,11 @@ export function buildMonthExportModel(document: AppDocument, year: number, month
       cells: r.cells.map((c, i): ExportCell => (w.holidays[i] ? { kind: 'closed', holiday: true } : c)),
     }));
     return {
-      monday: w.monday,
+      sunday: w.sunday,
       dates: w.dates,
       label: `${formatDayMonth(w.dates[0])} – ${formatDayMonth(w.dates[6])}`,
       cycleWeek: w.cycleWeek,
-      headers: w.dates.map((d, i) => `${WEEKDAY_SHORT[i]} ${formatDayMonth(d)}`),
+      headers: w.dates.map((d, i) => `${COLUMN_SHORT[i]} ${formatDayMonth(d)}`),
       inMonth: w.dates.map((d) => isInMonth(d, year, month)),
       rows,
       gapRows: body.gapRows,
