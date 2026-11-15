@@ -1,11 +1,11 @@
 import { countGaps } from './coverage';
-import { exampleDocument } from './example';
 import { generateSchedule } from './generator';
 import { applyRestFix, restFixes } from './restFixes';
 import { evaluateRules } from './rules';
 import type { Schedule } from './types';
+import { detailedMarketDocument } from '../test/fixtures';
 
-const doc = exampleDocument(new Date('2026-11-14'));
+const doc = detailedMarketDocument(new Date('2026-11-14'));
 const { config, employees } = doc;
 const base = generateSchedule({ config, employees });
 

@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { computeCoverage, countGaps } from './coverage';
-import { exampleDocument as siteExample } from './example';
-import { referenceDocument as exampleDocument } from '../test/fixtures';
+import { detailedMarketDocument as siteExample, referenceDocument as exampleDocument } from '../test/fixtures';
 import { fitEmployee, generateSchedule } from './generator';
 import { evaluateRules } from './rules';
 import { dayOfWeekday, weekOf, weekdayOf } from './time';
@@ -419,7 +418,7 @@ describe('folgas estáveis', () => {
   const spread = (row: Cell[]) => new Set(row.flatMap((c, d) => (c.status === 'off' && weekdayOf(d) !== SUNDAY ? [weekdayOf(d)] : []))).size;
 
   const cases = [
-    ['exemplo do site', () => { const d = siteExample(FIXED_DATE); return { config: d.config, employees: d.employees }; }],
+    ['mercado detalhado', () => { const d = siteExample(FIXED_DATE); return { config: d.config, employees: d.employees }; }],
     ['exemplo antigo, folgas separadas', () => example('flexible')],
     ['exemplo antigo, folgas juntas', () => example('together')],
   ] as const;

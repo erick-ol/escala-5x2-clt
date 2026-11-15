@@ -28,19 +28,19 @@ beforeEach(() => {
 });
 
 describe('App', () => {
-  test('primeira visita → Ver exemplo → configuração → Gerar escala mostra a grade', async () => {
+  test('primeira visita → exemplo do mercado → configuração → Gerar escala mostra a grade', async () => {
     const user = userEvent.setup();
     render(<App />);
     expect(screen.getByRole('heading', { name: /monte a escala 5x2/i })).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Ver exemplo' }));
+    await user.click(screen.getByRole('button', { name: 'Mercado' }));
     expect(screen.getByRole('heading', { name: 'Configurar a escala' })).toBeInTheDocument();
 
     await finishWizard(user);
     expect(screen.getByRole('grid', { name: 'Escala da semana 1' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Mercado do exemplo' })).toBeInTheDocument();
     expect(doc().schedule).not.toBeNull();
-    expect(screen.getByRole('button', { name: /^Rosa, segunda, semana 1:/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Ana, segunda, semana 1:/ })).toBeInTheDocument();
   });
 
   test('com escala salva, abre direto na tabela; "Exportar" abre o painel de exportação', async () => {

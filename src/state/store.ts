@@ -53,7 +53,8 @@ export interface AppState {
   lastBackupAt: string | null;
 
   replaceDocument(document: AppDocument): void;
-  loadExample(): void;
+  /** Carrega um dos exemplos da tela inicial (`EXAMPLES`); sem `id`, o mercado. */
+  loadExample(id?: string): void;
   resetToEmpty(): void;
   updateConfig(patch: Partial<StoreConfig>): void;
   addEmployee(employee: Employee): void;
@@ -143,7 +144,7 @@ export function createAppStore(storage: KeyValueStorage | null, now: () => Date 
       recoveredUnreadable,
 
       replaceDocument: (document) => setDocument(reconcileDocument(document)),
-      loadExample: () => setDocument(exampleDocument(now())),
+      loadExample: (id) => setDocument(exampleDocument(now(), id)),
       resetToEmpty: () => set({ document: emptyDocument(now()), hasSavedData: false }),
 
       updateConfig: (patch) => setDocument({ ...doc(), config: { ...doc().config, ...patch } }),

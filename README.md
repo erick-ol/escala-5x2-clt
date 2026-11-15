@@ -14,8 +14,8 @@ Grátis, sem cadastro e sem servidor: tudo roda e fica salvo no seu navegador.
 Donos e gerentes de pequenos negócios (de 3 a 30 funcionários) que precisam reorganizar a equipe para a 5x2
 sem planilha e sem adivinhar se a escala está dentro da lei.
 
-O caso de referência é um mercado de bairro com 6 funcionários, caixa e balcão, manhã e tarde, aberto 7 dias.
-Ele vem pré-carregado como exemplo: dá para explorar e apagar.
+Na tela inicial dá para abrir um exemplo pronto e explorar: mercado, loja de roupas, padaria, farmácia ou
+restaurante, cada um com equipe, turnos e horários típicos do ramo. Depois é só mudar tudo ou apagar.
 
 ## O que o site faz
 

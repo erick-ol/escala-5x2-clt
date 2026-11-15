@@ -20,7 +20,7 @@ describe('store', () => {
     const a = createAppStore(storage, now);
     a.getState().loadExample();
     const b = createAppStore(storage, now);
-    expect(b.getState().document.employees).toHaveLength(7);
+    expect(b.getState().document.employees).toHaveLength(6);
     expect(b.getState().hasSavedData).toBe(true);
   });
 
@@ -44,7 +44,7 @@ describe('store', () => {
     const s = createAppStore(broken, now);
     expect(s.getState().storageAvailable).toBe(false);
     s.getState().loadExample();
-    expect(s.getState().document.employees).toHaveLength(7);
+    expect(s.getState().document.employees).toHaveLength(6);
   });
 
   test('falha ao gravar depois marca o armazenamento como indisponível', () => {
@@ -81,7 +81,7 @@ describe('store', () => {
       setItem(k, v);
     };
     window.dispatchEvent(new StorageEvent('storage', { key: STORAGE_KEY, newValue }));
-    expect(s.getState().document.employees).toHaveLength(7);
+    expect(s.getState().document.employees).toHaveLength(6);
     expect(writes).toBe(0);
   });
 
@@ -101,13 +101,13 @@ describe('store', () => {
     const schedule = Object.fromEntries(doc.employees.map((e) => [e.id, defaultRow(doc.config)]));
     s.getState().setSchedule(schedule);
     s.getState().setMarks([
-      { day: 2, shiftId: 'tarde', roleId: 'balconista', slot: 0, coveredBy: { kind: 'employee', employeeId: 'joao' } },
-      { day: 3, shiftId: 'tarde', roleId: 'balconista', slot: 0, coveredBy: { kind: 'owner' } },
+      { day: 2, shiftId: 'tarde', roleId: 'caixa', slot: 0, coveredBy: { kind: 'employee', employeeId: 'diego' } },
+      { day: 3, shiftId: 'tarde', roleId: 'caixa', slot: 0, coveredBy: { kind: 'owner' } },
     ]);
-    s.getState().removeEmployee('joao');
+    s.getState().removeEmployee('diego');
     const after = s.getState().document;
-    expect(after.employees.map((e) => e.id)).not.toContain('joao');
-    expect(after.schedule?.joao).toBeUndefined();
+    expect(after.employees.map((e) => e.id)).not.toContain('diego');
+    expect(after.schedule?.diego).toBeUndefined();
     expect(after.marks).toHaveLength(1);
     expect(after.marks[0].coveredBy.kind).toBe('owner');
   });
@@ -117,11 +117,11 @@ describe('store', () => {
     s.getState().loadExample();
     const doc = s.getState().document;
     const schedule = Object.fromEntries(doc.employees.map((e) => [e.id, defaultRow(doc.config)]));
-    schedule.rosa[0] = { status: 'off' };
+    schedule.ana[0] = { status: 'off' };
     s.getState().setSchedule(schedule);
-    s.getState().addEmployee({ id: 'nova', name: 'Nova', roleId: 'balconista', shiftId: 'tarde', isWoman: true });
+    s.getState().addEmployee({ id: 'nova', name: 'Nova', roleId: 'caixa', shiftId: 'tarde', isWoman: true });
     const after = s.getState().document.schedule!;
-    expect(after.rosa[0].status).toBe('off');
+    expect(after.ana[0].status).toBe('off');
     expect(after.nova).toHaveLength(CYCLE_DAYS);
   });
 

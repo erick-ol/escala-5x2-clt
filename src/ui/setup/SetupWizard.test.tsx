@@ -440,7 +440,7 @@ describe('SetupWizard', () => {
     const dialog = screen.getByRole('dialog', { name: 'Apagar tudo?' });
     expect(within(dialog).getByRole('button', { name: 'Cancelar' })).toHaveFocus();
     await user.click(within(dialog).getByRole('button', { name: 'Cancelar' }));
-    expect(doc().employees).toHaveLength(7);
+    expect(doc().employees).toHaveLength(6);
 
     await user.click(screen.getByRole('button', { name: 'Começar do zero' }));
     await user.click(screen.getByRole('button', { name: 'Apagar tudo e começar do zero' }));
@@ -452,14 +452,29 @@ describe('SetupWizard', () => {
 });
 
 describe('FirstVisit', () => {
-  test('"Ver exemplo" preenche 7 funcionários e chama onStart', async () => {
+  test('mostra os 5 exemplos; escolher um carrega aquele exemplo e chama onStart', async () => {
     const user = userEvent.setup();
     const onStart = vi.fn();
     render(<FirstVisit onStart={onStart} />);
     expect(screen.getByRole('button', { name: 'Restaurar backup' })).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Ver exemplo' }));
+    const group = screen.getByRole('group', { name: 'Ver um exemplo pronto' });
+    expect(within(group).getAllByRole('button').map((b) => b.textContent?.split(/\d/)[0])).toEqual([
+      'Mercado',
+      'Loja de roupas',
+      'Padaria',
+      'Farmácia',
+      'Restaurante',
+    ]);
+    expect(screen.getByRole('button', { name: 'Padaria' })).toHaveAccessibleDescription(/padeiros de madrugada/);
+
+    await user.click(screen.getByRole('button', { name: 'Padaria' }));
+    expect(doc().config.name).toBe('Padaria do exemplo');
     expect(doc().employees).toHaveLength(7);
     expect(onStart).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole('button', { name: 'Mercado' }));
+    expect(doc().config.name).toBe('Mercado do exemplo');
+    expect(doc().employees).toHaveLength(6);
   });
 
   test('"Começar do zero" inicia vazio e chama onStart', async () => {
