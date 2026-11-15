@@ -1,7 +1,7 @@
 import { createPortal } from 'react-dom';
 import { CYCLE_DAYS, DAYS_PER_WEEK, WEEKDAY_SHORT } from '../../domain/types';
 import { weekdayOf } from '../../domain/time';
-import type { ExportCell, ExportModel, GapCell, LegendItem, MonthExportModel } from './exportModel';
+import { toneClass, type ExportCell, type ExportModel, type GapCell, type LegendItem, type MonthExportModel } from './exportModel';
 import './print.css';
 
 export function ScheduleCellContent({ cell }: { cell: ExportCell }) {
@@ -23,8 +23,9 @@ export function GapCellContent({ cell }: { cell: GapCell }) {
   return <span className="xp-coverer">{cell.label}</span>;
 }
 
-export function cellClass(cell: ExportCell): string {
-  return `xp-cell xp-cell-${cell.kind}${cell.kind === 'closed' && cell.holiday ? ' xp-cell-holiday' : ''}`;
+export function cellClass(cell: ExportCell, legend?: LegendItem[]): string {
+  const tone = cell.kind === 'work' && legend ? toneClass(legend, cell.initial) : '';
+  return `xp-cell xp-cell-${cell.kind}${cell.kind === 'closed' && cell.holiday ? ' xp-cell-holiday' : ''}${tone}`;
 }
 
 const days = Array.from({ length: CYCLE_DAYS }, (_, d) => d);
@@ -42,7 +43,7 @@ export function PrintSheet({ model, skip }: { model: ExportModel; skip?: boolean
       </header>
       <ul className="ps-legend" aria-label="Legenda">
         {model.legend.map((l) => (
-          <li key={l.initial}>
+          <li key={l.initial} className={toneClass(model.legend, l.initial).trim()}>
             <b>{l.initial}</b> = {l.name} <span className="mono">{l.times}</span>
           </li>
         ))}
@@ -89,7 +90,7 @@ export function PrintSheet({ model, skip }: { model: ExportModel; skip?: boolean
                 {row.roleName && <small>{row.roleName}</small>}
               </th>
               {row.cells.map((cell, d) => (
-                <td key={d} className={`${cellClass(cell)}${d % DAYS_PER_WEEK === 0 ? ' ps-week-start' : ''}`}>
+                <td key={d} className={`${cellClass(cell, model.legend)}${d % DAYS_PER_WEEK === 0 ? ' ps-week-start' : ''}`}>
                   <ScheduleCellContent cell={cell} />
                 </td>
               ))}
@@ -126,7 +127,7 @@ function MonthLegend({ legend, hasFlex, hasHoliday }: { legend: LegendItem[]; ha
   return (
     <ul className="ps-legend" aria-label="Legenda">
       {legend.map((l) => (
-        <li key={l.initial}>
+        <li key={l.initial} className={toneClass(legend, l.initial).trim()}>
           <b>{l.initial}</b> = {l.name} <span className="mono">{l.times}</span>
         </li>
       ))}
@@ -197,7 +198,7 @@ export function MonthPrintSheet({ model, skip }: { model: MonthExportModel; skip
                   {row.roleName && <small>{row.roleName}</small>}
                 </th>
                 {row.cells.map((cell, i) => (
-                  <td key={i} className={`${cellClass(cell)}${w.inMonth[i] ? '' : ' ps-out'}`}>
+                  <td key={i} className={`${cellClass(cell, model.legend)}${w.inMonth[i] ? '' : ' ps-out'}`}>
                     <ScheduleCellContent cell={cell} />
                   </td>
                 ))}

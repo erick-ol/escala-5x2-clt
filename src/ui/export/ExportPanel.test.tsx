@@ -151,7 +151,7 @@ describe('ExportPanel', () => {
     expect(screen.getByText('Gerando imagem…')).toBeInTheDocument();
     expect(await screen.findByText(/Não foi possível gerar a imagem/)).toBeInTheDocument();
     expect(screen.getByRole('dialog')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Compartilhar' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Compartilhar imagem' })).toBeDisabled();
     expect(onClose).not.toHaveBeenCalled();
   });
 
@@ -188,7 +188,7 @@ describe('ExportPanel', () => {
   it('compartilha o arquivo quando o navegador aceita', async () => {
     setShare(true, () => Promise.resolve());
     await renderReady();
-    await userEvent.click(screen.getByRole('button', { name: 'Compartilhar' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Compartilhar imagem' }));
     const share = navigator.share as unknown as ReturnType<typeof vi.fn>;
     expect(share).toHaveBeenCalledTimes(1);
     const arg = share.mock.calls[0][0] as ShareData;
@@ -199,7 +199,7 @@ describe('ExportPanel', () => {
 
   it('sem suporte a arquivos, cai para download', async () => {
     await renderReady();
-    await userEvent.click(screen.getByRole('button', { name: 'Compartilhar' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Compartilhar imagem' }));
     expect(createObjectURL).toHaveBeenCalledTimes(1);
     expect(anchorClick).toHaveBeenCalledTimes(1);
     expect((anchorClick.mock.instances[0] as unknown as HTMLAnchorElement).download).toBe(
@@ -210,7 +210,7 @@ describe('ExportPanel', () => {
   it('com NotAllowedError, cai para download', async () => {
     setShare(true, () => Promise.reject(new DOMException('negado', 'NotAllowedError')));
     await renderReady();
-    await userEvent.click(screen.getByRole('button', { name: 'Compartilhar' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Compartilhar imagem' }));
     await waitFor(() => expect(anchorClick).toHaveBeenCalledTimes(1));
     expect(navigator.share).toHaveBeenCalledTimes(1);
   });
@@ -218,7 +218,7 @@ describe('ExportPanel', () => {
   it('quando a pessoa cancela o compartilhamento (AbortError), não baixa nada', async () => {
     setShare(true, () => Promise.reject(new DOMException('cancelado', 'AbortError')));
     await renderReady();
-    await userEvent.click(screen.getByRole('button', { name: 'Compartilhar' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Compartilhar imagem' }));
     await waitFor(() => expect(navigator.share).toHaveBeenCalledTimes(1));
     expect(anchorClick).not.toHaveBeenCalled();
   });
@@ -256,7 +256,7 @@ describe('ExportPanel no mês', () => {
 
   it('formato tabela: folha do mês tem todas as datas do mês, semana a semana, com o feriado', async () => {
     render(<ExportPanel month={{ year: 2026, month: 12 }} onClose={vi.fn()} />);
-    expect(screen.getByRole('button', { name: 'Mês: Dezembro de 2026' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Dezembro de 2026' })).toHaveAttribute('aria-pressed', 'true');
     await userEvent.click(screen.getByRole('button', { name: 'Tabela por semana' }));
     await screen.findByText('Imagem de 29/11 – 05/12 pronta.');
     const sheet = printSheet();
@@ -301,7 +301,7 @@ describe('ExportPanel no mês', () => {
     expect(weekImage()).toHaveTextContent('Sáb 05/12');
     await userEvent.click(screen.getByRole('button', { name: '06/12 – 12/12' }));
     await screen.findByText('Imagem de 06/12 – 12/12 pronta.');
-    await userEvent.click(screen.getByRole('button', { name: 'Compartilhar' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Compartilhar imagem' }));
     const arg = (navigator.share as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0] as ShareData;
     expect(arg.title).toBe('Mercado do exemplo — Escala 06/12 – 12/12');
     expect(arg.files?.[0].name).toBe('escala-mercado-do-exemplo-2026-12-06.png');
@@ -313,8 +313,12 @@ describe('ExportPanel no mês', () => {
   });
 });
 
-const preview = () => screen.getByTestId('personal-preview');
 const personalImage = () => screen.getByTestId('personal-image');
+/** Troca o painel para "Uma pessoa" (e escolhe a pessoa, se pedida). */
+async function choosePerson(name?: string) {
+  await userEvent.click(screen.getByRole('button', { name: 'Uma pessoa' }));
+  if (name) await userEvent.selectOptions(screen.getByLabelText('Funcionário'), name);
+}
 
 describe('ExportPanel por funcionário', () => {
   let printSpy: ReturnType<typeof vi.spyOn>;
@@ -324,14 +328,20 @@ describe('ExportPanel por funcionário', () => {
   });
   afterEach(() => printSpy.mockRestore());
 
-  it('mostra a prévia da primeira pessoa e troca ao escolher outra', async () => {
+  it('começa na equipe; "Uma pessoa" mostra a primeira pessoa e troca ao escolher outra', async () => {
     render(<ExportPanel onClose={vi.fn()} />);
+    await screen.findByText('Imagem da semana 1 pronta.');
+    expect(screen.getByRole('button', { name: 'Equipe toda' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByLabelText('Funcionário')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('personal-image')).not.toBeInTheDocument();
+    await choosePerson();
     await screen.findByText('Imagem de Andreza pronta.');
-    expect(preview()).toHaveTextContent('Andreza');
-    expect(preview()).toHaveTextContent('Ciclo de 3 semanas a partir de');
+    expect(screen.queryByTestId('week-image')).not.toBeInTheDocument();
+    expect(personalImage()).toHaveTextContent('Andreza');
+    expect(personalImage()).toHaveTextContent('Ciclo de 3 semanas a partir de');
     // Ciclo também em calendário: domingo a sábado, a coluna do total diz a semana.
-    expect(within(preview()).getByTestId('personal-calendar')).toBeInTheDocument();
-    expect(within(preview()).getAllByTestId('personal-calendar-total').map((t) => t.textContent)).toEqual([
+    expect(within(personalImage()).getByTestId('personal-calendar')).toBeInTheDocument();
+    expect(within(personalImage()).getAllByTestId('personal-calendar-total').map((t) => t.textContent)).toEqual([
       expect.stringMatching(/^Semana 1/),
       expect.stringMatching(/^Semana 2/),
       expect.stringMatching(/^Semana 3/),
@@ -339,24 +349,25 @@ describe('ExportPanel por funcionário', () => {
 
     await userEvent.selectOptions(screen.getByLabelText('Funcionário'), 'Rosa');
     await screen.findByText('Imagem de Rosa pronta.');
-    expect(preview()).toHaveTextContent('Rosa');
-    expect(preview()).toHaveTextContent('Balconista');
-    expect(preview()).toHaveTextContent('05:45–13:30');
-    expect(preview()).not.toHaveTextContent('Andreza');
-    expect(within(preview()).getAllByTestId('personal-calendar-day')).toHaveLength(CYCLE_DAYS);
-    expect(within(preview()).getAllByTestId('personal-calendar-total')).toHaveLength(3);
+    expect(personalImage()).toHaveTextContent('Rosa');
+    expect(personalImage()).toHaveTextContent('Balconista');
+    expect(personalImage()).toHaveTextContent('05:45–13:30');
+    expect(personalImage()).not.toHaveTextContent('Andreza');
+    expect(within(personalImage()).getAllByTestId('personal-calendar-day')).toHaveLength(CYCLE_DAYS);
+    expect(within(personalImage()).getAllByTestId('personal-calendar-total')).toHaveLength(3);
     expect(personalImage()).toHaveTextContent('Rosa');
     expect(personalImage()).toHaveAttribute('data-format', 'calendar');
     const personalCalls = toBlobMock.mock.calls.filter(([node]) => (node as HTMLElement).dataset.testid === 'personal-image');
     expect(personalCalls).toHaveLength(2);
   });
 
-  it('"Imprimir só esta pessoa" imprime só a folha dela, sem a folha da equipe', async () => {
+  it('"Imprimir" com uma pessoa imprime só a folha dela, sem a folha da equipe', async () => {
     render(<ExportPanel onClose={vi.fn()} />);
+    await choosePerson();
     await screen.findByText('Imagem de Andreza pronta.');
     expect(screen.queryByTestId('personal-print')).not.toBeInTheDocument();
     await userEvent.selectOptions(screen.getByLabelText('Funcionário'), 'Rosa');
-    await userEvent.click(screen.getByRole('button', { name: 'Imprimir só esta pessoa' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Imprimir' }));
     expect(printSpy).toHaveBeenCalledTimes(1);
     const pages = within(screen.getByTestId('personal-print')).getAllByTestId('personal-page');
     expect(pages).toHaveLength(1);
@@ -365,7 +376,8 @@ describe('ExportPanel por funcionário', () => {
     expect(printSheet()).toHaveAttribute('data-print-skip');
 
     // Voltar a imprimir a equipe tira a folha individual da impressão.
-    await userEvent.click(screen.getByRole('button', { name: 'Imprimir escala' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Equipe toda' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Imprimir' }));
     expect(printSpy).toHaveBeenCalledTimes(2);
     expect(screen.queryByTestId('personal-print')).not.toBeInTheDocument();
     expect(printSheet()).not.toHaveAttribute('data-print-skip');
@@ -373,6 +385,7 @@ describe('ExportPanel por funcionário', () => {
 
   it('"Imprimir todos" gera uma página por pessoa', async () => {
     render(<ExportPanel onClose={vi.fn()} />);
+    await choosePerson();
     await screen.findByText('Imagem de Andreza pronta.');
     await userEvent.click(screen.getByRole('button', { name: 'Imprimir todos (uma página por pessoa)' }));
     expect(printSpy).toHaveBeenCalledTimes(1);
@@ -388,9 +401,9 @@ describe('ExportPanel por funcionário', () => {
 
   it('imagem sem suporte a arquivos cai para download com o nome da pessoa', async () => {
     render(<ExportPanel onClose={vi.fn()} />);
-    await userEvent.selectOptions(screen.getByLabelText('Funcionário'), 'Rosa');
+    await choosePerson('Rosa');
     await screen.findByText('Imagem de Rosa pronta.');
-    await userEvent.click(screen.getByRole('button', { name: 'Imagem para WhatsApp' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Compartilhar imagem' }));
     expect(anchorClick).toHaveBeenCalledTimes(1);
     expect((anchorClick.mock.instances[0] as unknown as HTMLAnchorElement).download).toBe('escala-rosa-ciclo.png');
     expect(screen.getAllByText(/Imagem baixada/)).toHaveLength(1);
@@ -402,15 +415,16 @@ describe('ExportPanel por funcionário', () => {
       return new Blob(['png'], { type: 'image/png' });
     });
     render(<ExportPanel onClose={vi.fn()} />);
-    expect(await screen.findByText(/A imagem de Andreza não saiu/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Imagem para WhatsApp' })).toBeDisabled();
+    await choosePerson();
+    expect(await screen.findByText(/Não foi possível gerar a imagem/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Compartilhar imagem' })).toBeDisabled();
     toBlobMock.mockResolvedValue(new Blob(['png'], { type: 'image/png' }));
     await userEvent.click(screen.getByRole('button', { name: 'Tentar de novo' }));
     await screen.findByText('Imagem de Andreza pronta.');
-    expect(screen.getByRole('button', { name: 'Imagem para WhatsApp' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Compartilhar imagem' })).toBeEnabled();
   });
 
-  it('não mostra alertas nem "Funcionária mulher" na prévia, na imagem e na impressão', async () => {
+  it('não mostra alertas nem "Funcionária mulher" na imagem e na impressão', async () => {
     const doc = fixture();
     doc.schedule!.andreza = Array.from({ length: CYCLE_DAYS }, () => ({ status: 'work' as const }));
     appStore.getState().replaceDocument(doc);
@@ -418,9 +432,10 @@ describe('ExportPanel por funcionário', () => {
     const messages = reports.andreza.alerts.map((a) => a.message);
     expect(messages.length).toBeGreaterThan(0);
     render(<ExportPanel onClose={vi.fn()} />);
+    await choosePerson();
     await screen.findByText('Imagem de Andreza pronta.');
     await userEvent.click(screen.getByRole('button', { name: 'Imprimir todos (uma página por pessoa)' }));
-    for (const node of [preview(), personalImage(), screen.getByTestId('personal-print')]) {
+    for (const node of [personalImage(), screen.getByTestId('personal-print')]) {
       const text = node.textContent ?? '';
       expect(text).not.toMatch(/Funcionária mulher|alerta|Falta|Dono\/família/i);
       for (const m of messages) expect(text).not.toContain(m);
@@ -447,16 +462,18 @@ describe('ExportPanel por funcionário no mês', () => {
     setShare(true, () => Promise.resolve());
     render(<ExportPanel month={{ year: 2026, month: 12 }} onClose={vi.fn()} />);
     await userEvent.click(screen.getByRole('button', { name: 'Tabela por semana' }));
-    await userEvent.selectOptions(screen.getByLabelText('Funcionário'), 'Rosa');
+    await choosePerson('Rosa');
     await screen.findByText('Imagem de Rosa pronta.');
-    expect(preview()).toHaveTextContent('Dezembro de 2026');
-    const days = within(preview()).getAllByTestId('personal-calendar-day');
+    // O formato é só da equipe: some com "Uma pessoa".
+    expect(screen.queryByRole('button', { name: 'Tabela por semana' })).not.toBeInTheDocument();
+    expect(personalImage()).toHaveTextContent('Dezembro de 2026');
+    const days = within(personalImage()).getAllByTestId('personal-calendar-day');
     expect(days).toHaveLength(35);
     const day = (date: string) => days.find((d) => d.dataset.date === date)!;
     expect(day('2026-12-02')).toHaveTextContent('Folga');
     expect(day('2026-12-25')).toHaveTextContent('Feriado');
 
-    await userEvent.click(screen.getByRole('button', { name: 'Imagem para WhatsApp' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Compartilhar imagem' }));
     const arg = (navigator.share as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0] as ShareData;
     expect(arg.files?.[0].name).toBe('escala-rosa-dezembro-2026.png');
     expect(arg.title).toBe('Escala de Rosa — Dezembro de 2026');
@@ -465,8 +482,8 @@ describe('ExportPanel por funcionário no mês', () => {
     // Voltar ao ciclo troca o período da escala individual.
     await userEvent.click(screen.getByRole('button', { name: 'Ciclo de 3 semanas' }));
     await screen.findByText('Imagem de Rosa pronta.');
-    expect(preview()).toHaveTextContent('Ciclo de 3 semanas a partir de 29/11/2026');
-    expect(within(preview()).getAllByTestId('personal-calendar-day')).toHaveLength(CYCLE_DAYS);
+    expect(personalImage()).toHaveTextContent('Ciclo de 3 semanas a partir de 29/11/2026');
+    expect(within(personalImage()).getAllByTestId('personal-calendar-day')).toHaveLength(CYCLE_DAYS);
   });
 });
 
@@ -567,17 +584,17 @@ describe('ExportPanel no mês — calendário (padrão)', () => {
     expect(nodes).toContain('month-image');
     expect(nodes).not.toContain('week-image');
 
-    await userEvent.click(screen.getByRole('button', { name: 'Compartilhar' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Compartilhar imagem' }));
     const arg = (navigator.share as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0] as ShareData;
     expect(arg.title).toBe('Mercado do exemplo — Dezembro de 2026');
     expect(arg.files?.[0].name).toBe('escala-mercado-do-exemplo-dezembro-2026.png');
   });
 
-  it('por funcionário: prévia, imagem e impressão em calendário, com intervalo, folga, feriado e totais', async () => {
+  it('por funcionário: imagem e impressão em calendário, com intervalo, folga, feriado e totais', async () => {
     render(<ExportPanel month={DECEMBER} onClose={vi.fn()} />);
-    await userEvent.selectOptions(screen.getByLabelText('Funcionário'), 'Rosa');
+    await choosePerson('Rosa');
     await screen.findByText('Imagem de Rosa pronta.');
-    const cal = within(preview()).getByTestId('personal-calendar');
+    const cal = within(personalImage()).getByTestId('personal-calendar');
     expect(Array.from(cal.querySelectorAll('thead th')).map((th) => th.textContent)).toEqual([
       'Domingo',
       'Segunda',
@@ -608,15 +625,14 @@ describe('ExportPanel no mês — calendário (padrão)', () => {
       model.weeks.map((w) => w.total),
     );
 
-    // A imagem da pessoa é o mesmo calendário.
+    // A imagem da pessoa é o mesmo calendário da impressão.
     expect(personalImage()).toHaveAttribute('data-format', 'calendar');
-    expect(within(personalImage()).getByTestId('personal-calendar')).toBeInTheDocument();
     expect(personalImage()).toHaveTextContent('Rosa');
     const last = toBlobMock.mock.calls.filter(([node]) => (node as HTMLElement).dataset.testid === 'personal-image').at(-1)!;
     expect((last[0] as HTMLElement).querySelector('[data-testid="personal-calendar"]')).not.toBeNull();
 
     // Impressão só desta pessoa: A4 em pé, calendário; a folha da equipe fica de fora (sem forçar paisagem).
-    await userEvent.click(screen.getByRole('button', { name: 'Imprimir só esta pessoa' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Imprimir' }));
     expect(printSpy).toHaveBeenCalledTimes(1);
     const print = screen.getByTestId('personal-print');
     expect(print).toHaveAttribute('data-format', 'calendar');
@@ -628,9 +644,11 @@ describe('ExportPanel no mês — calendário (padrão)', () => {
     expect(printSheet().querySelector('style')).toBeNull();
 
     // "Tabela por semana" muda só a folha da equipe: a da pessoa continua em calendário.
+    await userEvent.click(screen.getByRole('button', { name: 'Equipe toda' }));
     await userEvent.click(screen.getByRole('button', { name: 'Tabela por semana' }));
-    expect(within(preview()).getByTestId('personal-calendar')).toBeInTheDocument();
-    expect(within(preview()).getAllByTestId('personal-calendar-day')).toHaveLength(35);
+    await choosePerson();
+    expect(within(personalImage()).getByTestId('personal-calendar')).toBeInTheDocument();
+    expect(within(personalImage()).getAllByTestId('personal-calendar-day')).toHaveLength(35);
   });
 
   it('não leva alertas nem "Funcionária mulher" para o calendário', async () => {
@@ -641,10 +659,11 @@ describe('ExportPanel no mês — calendário (padrão)', () => {
     expect(messages.length).toBeGreaterThan(0);
     render(<ExportPanel month={DECEMBER} onClose={vi.fn()} />);
     await screen.findByText('Imagem de dezembro de 2026 pronta.');
-    await screen.findByText('Imagem de Andreza pronta.');
     const team = [printSheet(), monthImage()].map((n) => n.textContent ?? '');
+    await choosePerson();
+    await screen.findByText('Imagem de Andreza pronta.');
     await userEvent.click(screen.getByRole('button', { name: 'Imprimir todos (uma página por pessoa)' }));
-    const personal = [preview(), personalImage(), screen.getByTestId('personal-print')].map((n) => n.textContent ?? '');
+    const personal = [personalImage(), screen.getByTestId('personal-print')].map((n) => n.textContent ?? '');
     for (const text of [...team, ...personal]) {
       expect(text).not.toMatch(/Funcionária mulher|alerta/i);
       for (const m of messages) expect(text).not.toContain(m);

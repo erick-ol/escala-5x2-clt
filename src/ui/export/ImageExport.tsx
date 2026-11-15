@@ -1,14 +1,17 @@
-import { useEffect, useId, useRef, useState, type RefObject } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { toBlob } from 'html-to-image';
 import { COLUMN_SHORT, DAYS_PER_WEEK, WEEKS } from '../../domain/types';
 import { GapCellContent, ScheduleCellContent, cellClass } from './PrintSheet';
 import { DOWNLOADED_NOTICE, shareOrDownload, slugify } from './download';
-import type { ExportModel, ExportRow, GapRow, LegendItem, MonthExportModel } from './exportModel';
+import { imageFontCss } from './imageFonts';
+import { toneClass, type ExportModel, type ExportRow, type GapRow, type LegendItem, type MonthExportModel } from './exportModel';
 
 export const IMAGE_WIDTH = 1080;
+/** Fundo das imagens: o mesmo papel do site (--paper). */
+const IMAGE_BACKGROUND = '#fbfaf7';
 
-type ImageState =
+export type ImageState =
   | { status: 'pending' }
   | { status: 'ready'; file: File }
   | { status: 'error' };
@@ -80,6 +83,10 @@ function WeekImage({ storeName, legend, page }: { storeName: string; legend: Leg
   return (
     <div className="wi">
       <header className="wi-header">
+        <p className="xi-brand">
+          <span className="xi-dot" />
+          Escala 5x2
+        </p>
         <h1 className="wi-title">{storeName}</h1>
         <p className="wi-week">{page.heading}</p>
       </header>
@@ -102,7 +109,7 @@ function WeekImage({ storeName, legend, page }: { storeName: string; legend: Leg
                 {row.roleName && <small>{row.roleName}</small>}
               </th>
               {row.cells.map((cell, i) => (
-                <td key={i} className={`${cellClass(cell)}${dim(i)}`}>
+                <td key={i} className={`${cellClass(cell, legend)}${dim(i)}`}>
                   <ScheduleCellContent cell={cell} />
                 </td>
               ))}
@@ -126,11 +133,11 @@ function WeekImage({ storeName, legend, page }: { storeName: string; legend: Leg
       </table>
       <ul className="wi-legend">
         {legend.map((l) => (
-          <li key={l.initial}>
+          <li key={l.initial} className={toneClass(legend, l.initial).trim()}>
             <b>{l.initial}</b> {l.name} <span className="mono">{l.times}</span>
           </li>
         ))}
-        <li>
+        <li className="is-off">
           <b>F</b> Folga
         </li>
         <li>
@@ -174,11 +181,13 @@ export function usePngFile(nodeRef: RefObject<HTMLElement>, fileName: string, tr
         await waitForFonts();
         const node = nodeRef.current;
         if (!node) throw new Error('sem nó');
+        const fontEmbedCSS = await imageFontCss();
         const blob = await toBlob(node, {
           width: IMAGE_WIDTH,
           pixelRatio: 1,
-          backgroundColor: '#ffffff',
+          backgroundColor: IMAGE_BACKGROUND,
           cacheBust: true,
+          fontEmbedCSS,
         });
         if (!blob) throw new Error('imagem vazia');
         if (cancelled) return;
@@ -196,14 +205,62 @@ export function usePngFile(nodeRef: RefObject<HTMLElement>, fileName: string, tr
   return { state, retry: () => setAttempt((n) => n + 1) };
 }
 
+/**
+ * Linha de ações das imagens: "Compartilhar imagem" + o botão secundário (Imprimir).
+ * "Gerando…" aparece enquanto a imagem não fica pronta; o "pronta" só é anunciado ao leitor de tela.
+ */
+export function ImageActions({
+  state,
+  ready,
+  onShare,
+  onRetry,
+  secondary,
+  notice,
+}: {
+  state: ImageState;
+  ready: string;
+  onShare(): void;
+  onRetry(): void;
+  secondary?: ReactNode;
+  notice: string | null;
+}) {
+  return (
+    <>
+      <div className="image-export-actions">
+        <button type="button" className="btn btn-primary" disabled={state.status !== 'ready'} onClick={onShare}>
+          Compartilhar imagem
+        </button>
+        {secondary}
+      </div>
+      <div className="image-export-status" aria-live="polite">
+        {state.status === 'pending' && <p className="hint">Gerando imagem…</p>}
+        {state.status === 'ready' && <p className="visually-hidden">{ready}</p>}
+      </div>
+      {state.status === 'error' && (
+        <div className="image-export-error">
+          <p role="alert" className="error-text">
+            Não foi possível gerar a imagem. Tente de novo ou imprima.
+          </p>
+          <button type="button" className="btn btn-sm" onClick={onRetry}>
+            Tentar de novo
+          </button>
+        </div>
+      )}
+      {notice && <p className="hint">{notice}</p>}
+    </>
+  );
+}
+
 export interface ImageExportProps {
   storeName: string;
   legend: LegendItem[];
   pages: ImagePage[];
+  /** Botão ao lado de "Compartilhar imagem" (o Imprimir do painel). */
+  secondary?: ReactNode;
 }
 
 /** Imagem para WhatsApp, uma por semana (KTD12). O PNG é gerado antes do toque em "Compartilhar". */
-export function ImageExport({ storeName, legend, pages }: ImageExportProps) {
+export function ImageExport({ storeName, legend, pages, secondary }: ImageExportProps) {
   const [index, setIndex] = useState(0);
   const week = Math.min(index, pages.length - 1);
   const page = pages[week];
@@ -224,7 +281,7 @@ export function ImageExport({ storeName, legend, pages }: ImageExportProps) {
     <div className="image-export">
       <div className="image-week-picker" role="group" aria-labelledby={labelId}>
         <span id={labelId} className="label">
-          Semana
+          Semana da imagem
         </span>
         {pages.map((p, w) => (
           <button
@@ -239,27 +296,7 @@ export function ImageExport({ storeName, legend, pages }: ImageExportProps) {
         ))}
       </div>
 
-      <div className="image-export-status" aria-live="polite">
-        {state.status === 'pending' && <p className="hint">Gerando imagem…</p>}
-        {state.status === 'ready' && <p className="hint">{page.ready}</p>}
-      </div>
-      {state.status === 'error' && (
-        <p role="alert" className="error-text">
-          Não foi possível gerar a imagem. Tente de novo ou use a impressão.
-        </p>
-      )}
-
-      <div className="image-export-actions">
-        <button type="button" className="btn btn-primary" disabled={state.status !== 'ready'} onClick={share}>
-          Compartilhar
-        </button>
-        {state.status === 'error' && (
-          <button type="button" className="btn" onClick={retry}>
-            Tentar de novo
-          </button>
-        )}
-      </div>
-      {notice && <p className="hint">{notice}</p>}
+      <ImageActions state={state} ready={page.ready} onShare={share} onRetry={retry} secondary={secondary} notice={notice} />
 
       {createPortal(
         <div className="image-offscreen" aria-hidden="true">

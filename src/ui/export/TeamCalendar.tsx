@@ -1,12 +1,13 @@
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { COLUMN_NAMES } from '../../domain/types';
-import { IMAGE_WIDTH, usePngFile } from './ImageExport';
+import { IMAGE_WIDTH, ImageActions, usePngFile } from './ImageExport';
 import { DOWNLOADED_NOTICE, shareOrDownload } from './download';
 import type { TeamCalendarDay, TeamCalendarModel, TeamCalendarWeek } from './calendarModel';
+import { toneClass, type LegendItem } from './exportModel';
 import './calendar.css';
 
-function DayContent({ day, showMissing }: { day: TeamCalendarDay; showMissing: boolean }) {
+function DayContent({ day, showMissing, legend }: { day: TeamCalendarDay; showMissing: boolean; legend?: LegendItem[] }) {
   if (day.kind === 'outside') return null;
   if (day.kind === 'holiday') return <span className="cal-status">Feriado — fechado</span>;
   if (day.kind === 'closed') return <span className="cal-status">Loja fechada</span>;
@@ -14,7 +15,7 @@ function DayContent({ day, showMissing }: { day: TeamCalendarDay; showMissing: b
     <>
       {day.groups.map((g) => (
         <span key={g.initial} className="tc-group" data-testid="calendar-shift">
-          <b className="tc-initial">{g.initial}</b>{' '}
+          <b className={`tc-initial${legend ? toneClass(legend, g.initial) : ''}`}>{g.initial}</b>{' '}
           {g.entries.map((e, i) => (
             <Fragment key={i}>
               {i > 0 && ', '}
@@ -37,7 +38,16 @@ function DayContent({ day, showMissing }: { day: TeamCalendarDay; showMissing: b
 }
 
 /** Calendário da equipe: 7 colunas (domingo a sábado), uma linha por semana do mês. */
-export function TeamCalendarTable({ weeks, showMissing }: { weeks: TeamCalendarWeek[]; showMissing: boolean }) {
+export function TeamCalendarTable({
+  weeks,
+  showMissing,
+  legend,
+}: {
+  weeks: TeamCalendarWeek[];
+  showMissing: boolean;
+  /** Dá a cada turno a forma do site (cheio, contorno, claro). */
+  legend?: LegendItem[];
+}) {
   return (
     <table className="cal tc-cal" data-testid="team-calendar">
       <thead>
@@ -55,7 +65,7 @@ export function TeamCalendarTable({ weeks, showMissing }: { weeks: TeamCalendarW
             {w.days.map((d) => (
               <td key={d.date} className={`cal-cell cal-${d.kind}`} data-testid="calendar-day" data-date={d.date}>
                 <span className="cal-num">{d.day}</span>
-                <DayContent day={d} showMissing={showMissing} />
+                <DayContent day={d} showMissing={showMissing} legend={legend} />
               </td>
             ))}
           </tr>
@@ -69,7 +79,7 @@ function TeamCalendarLegend({ model, showMissing }: { model: TeamCalendarModel; 
   return (
     <ul className="tc-legend" aria-label="Legenda">
       {model.legend.map((l) => (
-        <li key={l.initial}>
+        <li key={l.initial} className={toneClass(model.legend, l.initial).trim()}>
           <b>{l.initial}</b> = {l.name} <span className="tc-mono">{l.times}</span>
         </li>
       ))}
@@ -120,7 +130,7 @@ export function TeamCalendarPrintSheet({ model, skip }: { model: TeamCalendarMod
         <section key={i} className="tc-page" data-testid="calendar-page">
           <TeamCalendarHeader model={model} page={i} pages={pages.length} />
           <TeamCalendarLegend model={model} showMissing />
-          <TeamCalendarTable weeks={weeks} showMissing />
+          <TeamCalendarTable weeks={weeks} showMissing legend={model.legend} />
           <p className="tc-foot">
             Ferramenta orientativa baseada na EC 141/2026. Não substitui orientação jurídica nem convenção coletiva.
           </p>
@@ -132,7 +142,7 @@ export function TeamCalendarPrintSheet({ model, skip }: { model: TeamCalendarMod
 }
 
 /** Imagem do mês inteiro em calendário (1080px de largura) para o WhatsApp. */
-export function TeamCalendarImageExport({ model }: { model: TeamCalendarModel }) {
+export function TeamCalendarImageExport({ model, secondary }: { model: TeamCalendarModel; secondary?: ReactNode }) {
   const nodeRef = useRef<HTMLDivElement>(null);
   const { state, retry } = usePngFile(nodeRef, model.fileName, model);
   const [notice, setNotice] = useState<string | null>(null);
@@ -147,32 +157,24 @@ export function TeamCalendarImageExport({ model }: { model: TeamCalendarModel })
 
   return (
     <div className="image-export">
-      <div className="image-export-status" aria-live="polite">
-        {state.status === 'pending' && <p className="hint">Gerando imagem…</p>}
-        {state.status === 'ready' && <p className="hint">Imagem de {model.monthLabel.toLowerCase()} pronta.</p>}
-      </div>
-      {state.status === 'error' && (
-        <p role="alert" className="error-text">
-          Não foi possível gerar a imagem. Tente de novo ou use a impressão.
-        </p>
-      )}
-      <div className="image-export-actions">
-        <button type="button" className="btn btn-primary" disabled={state.status !== 'ready'} onClick={share}>
-          Compartilhar
-        </button>
-        {state.status === 'error' && (
-          <button type="button" className="btn" onClick={retry}>
-            Tentar de novo
-          </button>
-        )}
-      </div>
-      {notice && <p className="hint">{notice}</p>}
+      <ImageActions
+        state={state}
+        ready={`Imagem de ${model.monthLabel.toLowerCase()} pronta.`}
+        onShare={share}
+        onRetry={retry}
+        secondary={secondary}
+        notice={notice}
+      />
       {createPortal(
         <div className="image-offscreen" aria-hidden="true">
           <div ref={nodeRef} className="tc-image" data-testid="month-image" style={{ width: IMAGE_WIDTH }}>
+            <p className="xi-brand">
+              <span className="xi-dot" />
+              Escala 5x2
+            </p>
             <TeamCalendarHeader model={model} />
             <TeamCalendarLegend model={model} showMissing={false} />
-            <TeamCalendarTable weeks={model.weeks} showMissing={false} />
+            <TeamCalendarTable weeks={model.weeks} showMissing={false} legend={model.legend} />
           </div>
         </div>,
         document.body,
