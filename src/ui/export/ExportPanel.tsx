@@ -9,7 +9,7 @@ import { MonthPrintSheet, PrintSheet } from './PrintSheet';
 import { downloadBlob, formatDateTime } from './download';
 import { buildExportModel, buildMonthExportModel } from './exportModel';
 import { buildTeamCalendar } from './calendarModel';
-import { PersonalCalendarBody, PersonalImageExport, PersonalPrintSheet, PersonalSheetBody } from './PersonalSheet';
+import { PersonalCalendarBody, PersonalImageExport, PersonalPrintSheet } from './PersonalSheet';
 import { buildPersonalModels, type PersonalScope } from './personalModel';
 import { TeamCalendarImageExport, TeamCalendarPrintSheet } from './TeamCalendar';
 import './export.css';
@@ -225,11 +225,9 @@ export function ExportPanel({ month, onClose }: ExportPanelProps) {
                   Por funcionário
                 </h3>
                 <p className="hint">
-                  {calendar && monthModel
-                    ? `Calendário de ${monthModel.monthLabel.toLowerCase()} de uma pessoa, para entregar a ela: horários, intervalo, folgas e o total de cada semana.`
-                    : monthModel
-                    ? `Escala de uma pessoa em ${monthModel.monthLabel.toLowerCase()}, para entregar a ela: horários, intervalo e folgas.`
-                    : 'Escala de uma pessoa nas 3 semanas do ciclo, para entregar a ela: horários, intervalo e folgas.'}
+                  {monthModel
+                    ? `Calendário de ${monthModel.monthLabel.toLowerCase()} de uma pessoa, de domingo a sábado, para entregar a ela: horários, intervalo, folgas e o total de cada semana.`
+                    : 'Calendário de uma pessoa nas 3 semanas do ciclo, de domingo a sábado, para entregar a ela: horários, intervalo, folgas e o total de cada semana.'}
                 </p>
                 <div className="field">
                   <label htmlFor={personSelectId}>Funcionário</label>
@@ -253,10 +251,10 @@ export function ExportPanel({ month, onClose }: ExportPanelProps) {
                   aria-label={`Prévia da escala de ${person.name}`}
                   tabIndex={0}
                 >
-                  {calendar ? <PersonalCalendarBody model={person} /> : <PersonalSheetBody model={person} />}
+                  <PersonalCalendarBody model={person} />
                 </div>
                 <div className="export-personal-actions">
-                  <PersonalImageExport key={calendar ? 'calendar' : 'list'} model={person} calendar={calendar} />
+                  <PersonalImageExport model={person} />
                   <button type="button" className="btn" onClick={() => print('person')}>
                     Imprimir só esta pessoa
                   </button>
@@ -273,7 +271,7 @@ export function ExportPanel({ month, onClose }: ExportPanelProps) {
             ) : (
               <PrintSheet model={model} skip={printTarget !== 'team'} />
             )}
-            {printSheets.length > 0 && <PersonalPrintSheet models={printSheets} calendar={calendar} />}
+            {printSheets.length > 0 && <PersonalPrintSheet models={printSheets} />}
           </>
         ) : (
           <p className="export-empty">Gere a escala para poder imprimir ou compartilhar a imagem.</p>

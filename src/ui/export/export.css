@@ -63,7 +63,7 @@
 .export-restore .btn { width: 100%; }
 .export-empty { margin: 18px 0 0; color: var(--ink-2); }
 
-.week-picker {
+.image-week-picker {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
@@ -72,7 +72,7 @@
   border: 0;
   min-width: 0;
 }
-.week-picker .label { grid-column: 1 / -1; margin: 0 0 2px; padding: 0; }
+.image-week-picker .label { grid-column: 1 / -1; margin: 0 0 2px; padding: 0; }
 .week-btn {
   min-height: var(--tap);
   padding: 0 14px;

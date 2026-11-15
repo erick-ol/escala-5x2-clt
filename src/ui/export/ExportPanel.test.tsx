@@ -329,7 +329,13 @@ describe('ExportPanel por funcionário', () => {
     await screen.findByText('Imagem de Andreza pronta.');
     expect(preview()).toHaveTextContent('Andreza');
     expect(preview()).toHaveTextContent('Ciclo de 3 semanas a partir de');
-    expect(preview()).toHaveTextContent('Semana 1 · Dom');
+    // Ciclo também em calendário: domingo a sábado, a coluna do total diz a semana.
+    expect(within(preview()).getByTestId('personal-calendar')).toBeInTheDocument();
+    expect(within(preview()).getAllByTestId('personal-calendar-total').map((t) => t.textContent)).toEqual([
+      expect.stringMatching(/^Semana 1/),
+      expect.stringMatching(/^Semana 2/),
+      expect.stringMatching(/^Semana 3/),
+    ]);
 
     await userEvent.selectOptions(screen.getByLabelText('Funcionário'), 'Rosa');
     await screen.findByText('Imagem de Rosa pronta.');
@@ -337,9 +343,10 @@ describe('ExportPanel por funcionário', () => {
     expect(preview()).toHaveTextContent('Balconista');
     expect(preview()).toHaveTextContent('05:45–13:30');
     expect(preview()).not.toHaveTextContent('Andreza');
-    expect(within(preview()).getAllByTestId('personal-day')).toHaveLength(CYCLE_DAYS);
-    expect(within(preview()).getAllByText(/^Total/)).toHaveLength(3);
+    expect(within(preview()).getAllByTestId('personal-calendar-day')).toHaveLength(CYCLE_DAYS);
+    expect(within(preview()).getAllByTestId('personal-calendar-total')).toHaveLength(3);
     expect(personalImage()).toHaveTextContent('Rosa');
+    expect(personalImage()).toHaveAttribute('data-format', 'calendar');
     const personalCalls = toBlobMock.mock.calls.filter(([node]) => (node as HTMLElement).dataset.testid === 'personal-image');
     expect(personalCalls).toHaveLength(2);
   });
@@ -374,7 +381,7 @@ describe('ExportPanel por funcionário', () => {
     expect(pages).toHaveLength(doc.employees.length);
     doc.employees.forEach((e, i) => {
       expect(pages[i]).toHaveTextContent(e.name);
-      expect(within(pages[i]).getAllByTestId('personal-day')).toHaveLength(CYCLE_DAYS);
+      expect(within(pages[i]).getAllByTestId('personal-calendar-day')).toHaveLength(CYCLE_DAYS);
     });
     expect(printSheet()).toHaveAttribute('data-print-skip');
   });
@@ -436,19 +443,18 @@ describe('ExportPanel por funcionário no mês', () => {
     });
   });
 
-  it('formato tabela: segue o escopo do mês: datas reais, feriado, ajuste e compartilha com o nome do mês', async () => {
+  it('formato tabela: a pessoa continua em calendário do mês, com datas reais, feriado, ajuste e nome do mês', async () => {
     setShare(true, () => Promise.resolve());
     render(<ExportPanel month={{ year: 2026, month: 12 }} onClose={vi.fn()} />);
     await userEvent.click(screen.getByRole('button', { name: 'Tabela por semana' }));
     await userEvent.selectOptions(screen.getByLabelText('Funcionário'), 'Rosa');
     await screen.findByText('Imagem de Rosa pronta.');
     expect(preview()).toHaveTextContent('Dezembro de 2026');
-    expect(preview()).toHaveTextContent('Semana de 29/11');
-    const rows = within(preview()).getAllByTestId('personal-day');
-    expect(rows).toHaveLength(35);
-    const row = (label: string) => rows.find((r) => r.querySelector('th')?.textContent === label)!;
-    expect(row('Qua 02/12')).toHaveTextContent('Folga');
-    expect(row('Sex 25/12')).toHaveTextContent('Feriado');
+    const days = within(preview()).getAllByTestId('personal-calendar-day');
+    expect(days).toHaveLength(35);
+    const day = (date: string) => days.find((d) => d.dataset.date === date)!;
+    expect(day('2026-12-02')).toHaveTextContent('Folga');
+    expect(day('2026-12-25')).toHaveTextContent('Feriado');
 
     await userEvent.click(screen.getByRole('button', { name: 'Imagem para WhatsApp' }));
     const arg = (navigator.share as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0] as ShareData;
@@ -460,7 +466,7 @@ describe('ExportPanel por funcionário no mês', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Ciclo de 3 semanas' }));
     await screen.findByText('Imagem de Rosa pronta.');
     expect(preview()).toHaveTextContent('Ciclo de 3 semanas a partir de 29/11/2026');
-    expect(within(preview()).getAllByTestId('personal-day')).toHaveLength(CYCLE_DAYS);
+    expect(within(preview()).getAllByTestId('personal-calendar-day')).toHaveLength(CYCLE_DAYS);
   });
 });
 
@@ -621,10 +627,10 @@ describe('ExportPanel no mês — calendário (padrão)', () => {
     expect(printSheet()).toHaveAttribute('data-print-skip');
     expect(printSheet().querySelector('style')).toBeNull();
 
-    // "Tabela por semana" volta à lista de dias.
+    // "Tabela por semana" muda só a folha da equipe: a da pessoa continua em calendário.
     await userEvent.click(screen.getByRole('button', { name: 'Tabela por semana' }));
-    expect(within(preview()).queryByTestId('personal-calendar')).not.toBeInTheDocument();
-    expect(within(preview()).getAllByTestId('personal-day')).toHaveLength(35);
+    expect(within(preview()).getByTestId('personal-calendar')).toBeInTheDocument();
+    expect(within(preview()).getAllByTestId('personal-calendar-day')).toHaveLength(35);
   });
 
   it('não leva alertas nem "Funcionária mulher" para o calendário', async () => {

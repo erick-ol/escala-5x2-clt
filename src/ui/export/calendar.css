@@ -73,6 +73,8 @@
 .pc-holiday .pc-status { font-style: normal; font-weight: 700; color: #111; }
 .cal-total-head { width: 9%; }
 .cal-total { text-align: center !important; vertical-align: middle !important; font-weight: 800; background: #f6f6f6; }
+/* Ciclo: a coluna do total diz qual semana é ("Semana 1"). */
+.cal-week-name { display: block; margin-bottom: 2px; font-size: 0.62em; font-weight: 700; line-height: 1.15; color: #444; }
 .pc-foot { font-size: 0.8em; }
 
 /* Prévia no painel: rola na horizontal no celular para não espremer os horários. */

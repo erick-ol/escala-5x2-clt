@@ -162,6 +162,9 @@ export interface PersonalCalendarWeek {
   key: string;
   total: string;
   minutes: number;
+  /** "Semana 1" (ciclo) ou "Semana de 30/11" (mês). */
+  label: string;
+  /** Número do dia no mês; 0 no ciclo (sem datas). */
   days: { day: number; outside: boolean; info: PersonalDay }[];
 }
 
@@ -171,6 +174,7 @@ export function personalCalendarWeeks(model: PersonalModel): PersonalCalendarWee
     key: w.key,
     total: w.total,
     minutes: w.minutes,
+    label: w.label,
     days: w.days.map((d) => ({ day: d.date ? dayNumberOf(d.date) : 0, outside: !!d.outside, info: d })),
   }));
 }

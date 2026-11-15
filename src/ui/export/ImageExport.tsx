@@ -222,7 +222,7 @@ export function ImageExport({ storeName, legend, pages }: ImageExportProps) {
 
   return (
     <div className="image-export">
-      <div className="week-picker" role="group" aria-labelledby={labelId}>
+      <div className="image-week-picker" role="group" aria-labelledby={labelId}>
         <span id={labelId} className="label">
           Semana
         </span>

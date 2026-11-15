@@ -8,28 +8,7 @@ import type { PersonalDay, PersonalModel } from './personalModel';
 import './personal.css';
 import './calendar.css';
 
-/** Quebra a linha só entre as partes ("06:30–14:00 · almoço 09:45–10:45"), nunca no meio de um horário. */
-function Segments({ text }: { text: string }) {
-  const parts = text.split(' · ');
-  return (
-    <>
-      {parts.map((part, i) => (
-        <Fragment key={i}>
-          {i > 0 && ' '}
-          <span className="pp-seg">
-            {part}
-            {i < parts.length - 1 && ' ·'}
-          </span>
-        </Fragment>
-      ))}
-    </>
-  );
-}
-
-/**
- * Escala individual: cabeçalho (loja, pessoa, função, turno, período) e uma linha por dia, com o total da semana.
- * O mesmo conteúdo serve para a prévia no painel, a folha impressa (A4 retrato) e a imagem do WhatsApp.
- */
+/** Cabeçalho da escala individual: loja, pessoa, função, turno e período. */
 function PersonalHeader({ model }: { model: PersonalModel }) {
   return (
     <header className="pp-head">
@@ -43,51 +22,6 @@ function PersonalHeader({ model }: { model: PersonalModel }) {
       )}
       <p className="pp-period">{model.periodLabel}</p>
     </header>
-  );
-}
-
-export function PersonalSheetBody({ model }: { model: PersonalModel }) {
-  const hasOutside = model.weeks.some((w) => w.days.some((d) => d.outside));
-  return (
-    <article className="pp" data-scope={model.scope}>
-      <PersonalHeader model={model} />
-      <div className="pp-weeks">
-        {model.weeks.map((w) => (
-          <section key={w.key} className="pp-week" data-testid="personal-week">
-            <h2 className="pp-week-title">
-              <span>{w.label}</span>
-              <span className="pp-total pp-num">
-                <span className="pp-total-label">Total </span>
-                {w.total}
-              </span>
-            </h2>
-            <table className="pp-days">
-              <tbody>
-                {w.days.map((d) => (
-                  <tr key={d.key} className={`pp-day pp-day-${d.kind}${d.outside ? ' pp-out' : ''}`} data-testid="personal-day">
-                    <th scope="row" className="pp-date pp-num">
-                      {d.label}
-                    </th>
-                    <td className="pp-what">
-                      <span className="pp-text pp-num">
-                        <Segments text={d.text} />
-                      </span>
-                      {d.note && <span className="pp-note">{d.note}</span>}
-                      {d.extras.map((x, i) => (
-                        <span key={i} className="pp-extra pp-num">
-                          + <Segments text={x} />
-                        </span>
-                      ))}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </section>
-        ))}
-      </div>
-      {hasOutside && <p className="pp-foot">Datas em cinza e itálico são de outro mês.</p>}
-    </article>
   );
 }
 
@@ -147,8 +81,9 @@ function PersonalCalendarDay({ info }: { info: PersonalDay }) {
 }
 
 /**
- * Escala individual do mês em calendário de parede: domingo a sábado, uma linha por semana, total da semana
- * na última coluna. Dias de outro mês saem só com o número, em cinza.
+ * Escala individual em calendário de parede (mês e ciclo): domingo a sábado, uma linha por semana, total da
+ * semana na última coluna. No mês, cada dia tem o número e os de outro mês saem só com ele, em cinza; no ciclo,
+ * a coluna do total diz qual semana é. O mesmo conteúdo serve para a prévia, a folha impressa e a imagem.
  */
 export function PersonalCalendarBody({ model }: { model: PersonalModel }) {
   const weeks = personalCalendarWeeks(model);
@@ -181,11 +116,12 @@ export function PersonalCalendarBody({ model }: { model: PersonalModel }) {
                   data-testid="personal-calendar-day"
                   data-date={d.info.date}
                 >
-                  <span className="cal-num pp-num">{d.day}</span>
+                  {d.day > 0 && <span className="cal-num pp-num">{d.day}</span>}
                   {!d.outside && <PersonalCalendarDay info={d.info} />}
                 </td>
               ))}
               <td className="cal-total pp-num" data-testid="personal-calendar-total">
+                {model.scope === 'cycle' && <span className="cal-week-name">{w.label}</span>}
                 {w.total}
               </td>
             </tr>
@@ -202,22 +138,16 @@ export function PersonalCalendarBody({ model }: { model: PersonalModel }) {
 }
 
 /**
- * Folhas impressas por pessoa (uma página cada), num portal "print-only" como a folha da equipe.
+ * Folhas impressas por pessoa (uma página cada, em calendário), num portal "print-only" como a folha da equipe.
  * Só é montada quando a impressão escolhida é por pessoa; nesse caso a página vira A4 retrato.
- * `calendar`: o mês sai em calendário de parede (padrão no mês) em vez da lista de dias.
  */
-export function PersonalPrintSheet({ models, calendar }: { models: PersonalModel[]; calendar?: boolean }) {
+export function PersonalPrintSheet({ models }: { models: PersonalModel[] }) {
   return createPortal(
-    <div
-      className="print-only pp-print"
-      data-testid="personal-print"
-      data-format={calendar ? 'calendar' : undefined}
-      aria-hidden="true"
-    >
-      <style>{`@page { size: A4 portrait; margin: ${calendar ? '10mm' : '12mm'}; }`}</style>
+    <div className="print-only pp-print" data-testid="personal-print" data-format="calendar" aria-hidden="true">
+      <style>{'@page { size: A4 portrait; margin: 10mm; }'}</style>
       {models.map((m) => (
         <div key={m.employeeId} className="pp-page" data-testid="personal-page">
-          {calendar ? <PersonalCalendarBody model={m} /> : <PersonalSheetBody model={m} />}
+          <PersonalCalendarBody model={m} />
         </div>
       ))}
     </div>,
@@ -226,7 +156,7 @@ export function PersonalPrintSheet({ models, calendar }: { models: PersonalModel
 }
 
 /** Imagem da escala individual para o WhatsApp: o PNG é gerado ao escolher a pessoa e compartilhado no toque. */
-export function PersonalImageExport({ model, calendar }: { model: PersonalModel; calendar?: boolean }) {
+export function PersonalImageExport({ model }: { model: PersonalModel }) {
   const nodeRef = useRef<HTMLDivElement>(null);
   const { state, retry } = usePngFile(nodeRef, model.fileName, model);
   const [notice, setNotice] = useState<string | null>(null);
@@ -265,10 +195,10 @@ export function PersonalImageExport({ model, calendar }: { model: PersonalModel;
             ref={nodeRef}
             className="pp-image"
             data-testid="personal-image"
-            data-format={calendar ? 'calendar' : undefined}
+            data-format="calendar"
             style={{ width: IMAGE_WIDTH }}
           >
-            {calendar ? <PersonalCalendarBody model={model} /> : <PersonalSheetBody model={model} />}
+            <PersonalCalendarBody model={model} />
           </div>
         </div>,
         document.body,
