@@ -44,6 +44,12 @@ const PAIR_REWARD = 10;
 const PAIR_PENALTY = 2;
 /** Cada dia de trabalho seguido acima de COMFORT_WORK_RUN custa isto. */
 const STREAK_PENALTY = 1;
+/**
+ * Folgas estáveis: cada dia da semana diferente (fora o domingo) usado como folga no ciclo custa isto.
+ * Ex.: seg+qua, dom+qua, seg+qua usa 2 dias (seg, qua); seg+qua, dom+qui, sex+sáb usa 5. Fica acima das
+ * outras preferências e abaixo dos buracos: cobrir a loja vem antes de repetir os mesmos dias.
+ */
+const SPREAD_PENALTY = 50;
 
 /**
  * Estado do gerador (KTD6). Cada pessoa (as que o gerador mexe e as linhas fixas do fitEmployee) tem,
@@ -418,6 +424,7 @@ class Solver {
     for (let w = 0; w < WEEKS; w++) {
       for (const k of order) {
         while (this.offsIn(k, w) < this.offsPerWeek) {
+          const usedWeekdays = weekdayMask(maskOf((d) => this.off[k][d]));
           let bestDay = -1;
           let bestScore: number[] = [];
           for (let d = w * DAYS_PER_WEEK; d < (w + 1) * DAYS_PER_WEEK; d++) {
@@ -429,7 +436,8 @@ class Solver {
             const shortRest = this.shortRests(k);
             this.setOff(k, d, false);
             const allSundays = Number(this.allSundaysOffWith(k, d));
-            const score = [tooLong + shortRest, allSundays, gap, this.together ? -adjacent : adjacent, -this.surplus(k, d), d];
+            const newWeekday = Number((weekdayMask(1 << d) & usedWeekdays) === 0 && weekdayOf(d) !== SUNDAY);
+            const score = [tooLong + shortRest, allSundays, gap, newWeekday, this.together ? -adjacent : adjacent, -this.surplus(k, d), d];
             if (bestDay < 0 || lexLess(score, bestScore)) {
               bestDay = d;
               bestScore = score;
@@ -455,7 +463,7 @@ class Solver {
     for (let pass = 0; pass < MAX_PASSES; pass++) {
       let improved = false;
       for (const k of order) {
-        const options: { offs: number[]; mask: number; gaps: number }[][] = [];
+        const options: { offs: number[]; mask: number; wd: number; gaps: number }[][] = [];
         const current: number[][] = [];
         for (let w = 0; w < WEEKS; w++) {
           const days: number[] = [];
@@ -470,7 +478,8 @@ class Solver {
             combinations(days, now.length).map((offs) => {
               this.applyWeek(k, w, offs);
               const gaps = this.gapsFor(k, w * DAYS_PER_WEEK, (w + 1) * DAYS_PER_WEEK);
-              return { offs, mask: offs.reduce((m, d) => m | (1 << d), 0), gaps };
+              const mask = offs.reduce((m, d) => m | (1 << d), 0);
+              return { offs, mask, wd: weekdayMask(mask), gaps };
             }),
           );
           this.applyWeek(k, w, now);
@@ -482,20 +491,21 @@ class Solver {
         // Se a linha atual já fere o rodízio de domingo (não deveria), não o exige das alternativas.
         const checkSunday = this.sundayOpen && sundayRuleOk(currentMask, isWoman);
         const conflict = this.restConflict[k];
-        const costOf = (offMask: number, gaps: number): number => {
+        const costOf = (offMask: number, wd: number, gaps: number): number => {
           if (checkSunday && !sundayRuleOk(offMask, isWoman)) return Infinity;
           const { violations, soft } = maskCost(offMask, closedMask, this.together, conflict);
           const allSundays = this.sundayOpen && (offMask & ALL_SUNDAYS) === ALL_SUNDAYS ? ALL_SUNDAYS_OFF_WEIGHT : 0;
-          return violations * VIOLATION_WEIGHT + allSundays + gaps * GAP_WEIGHT + soft;
+          return violations * VIOLATION_WEIGHT + allSundays + gaps * GAP_WEIGHT + soft + SPREAD_PENALTY * popcount(wd);
         };
-        let bestCost = costOf(currentMask, currentGaps);
+        let bestCost = costOf(currentMask, weekdayMask(currentMask), currentGaps);
         let best: number[][] | null = null;
         for (const a of options[0]) {
           for (const b of options[1]) {
             const ab = a.mask | b.mask;
+            const wab = a.wd | b.wd;
             const gab = a.gaps + b.gaps;
             for (const c of options[2]) {
-              const value = costOf(ab | c.mask, gab + c.gaps);
+              const value = costOf(ab | c.mask, wab | c.wd, gab + c.gaps);
               if (value < bestCost) {
                 bestCost = value;
                 best = [a.offs, b.offs, c.offs];
@@ -530,7 +540,7 @@ class Solver {
       if (this.sundayOpen && !sundayRuleOk(offMask, this.all[k].isWoman)) total += VIOLATION_WEIGHT;
       const { violations, soft } = maskCost(offMask, closedMask, this.together, this.restConflict[k]);
       if (this.sundayOpen && (offMask & ALL_SUNDAYS) === ALL_SUNDAYS) total += ALL_SUNDAYS_OFF_WEIGHT;
-      total += violations * VIOLATION_WEIGHT + soft;
+      total += violations * VIOLATION_WEIGHT + soft + SPREAD_PENALTY * popcount(weekdayMask(offMask));
     }
     return total;
   }
@@ -557,6 +567,15 @@ class Solver {
 const FULL_MASK = (1 << CYCLE_DAYS) - 1;
 const SUNDAY_BITS = Array.from({ length: WEEKS }, (_, w) => 1 << dayOfWeekday(w, SUNDAY));
 const ALL_SUNDAYS = SUNDAY_BITS.reduce((m, b) => m | b, 0);
+/** Bit do dia da semana de cada dia do ciclo (domingo fica de fora: o rodízio de domingo já é outra regra). */
+const WEEKDAY_BIT = Array.from({ length: CYCLE_DAYS }, (_, d) => (weekdayOf(d) === SUNDAY ? 0 : 1 << weekdayOf(d)));
+
+/** Dias da semana (bits 0 = segunda … 5 = sábado) em que a máscara de folgas tem folga. */
+function weekdayMask(offMask: number): number {
+  let out = 0;
+  for (let d = 0; d < CYCLE_DAYS; d++) if (offMask & (1 << d)) out |= WEEKDAY_BIT[d];
+  return out;
+}
 
 function maskOf(pred: (d: number) => boolean): number {
   let m = 0;

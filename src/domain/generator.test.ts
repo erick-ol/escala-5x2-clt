@@ -414,6 +414,25 @@ describe('domingos divididos', () => {
 });
 
 
+describe('folgas estáveis', () => {
+  /** Dias da semana diferentes (fora o domingo) em que a pessoa folga no ciclo. */
+  const spread = (row: Cell[]) => new Set(row.flatMap((c, d) => (c.status === 'off' && weekdayOf(d) !== SUNDAY ? [weekdayOf(d)] : []))).size;
+
+  const cases = [
+    ['exemplo do site', () => { const d = siteExample(FIXED_DATE); return { config: d.config, employees: d.employees }; }],
+    ['exemplo antigo, folgas separadas', () => example('flexible')],
+    ['exemplo antigo, folgas juntas', () => example('together')],
+  ] as const;
+  for (const [name, input] of cases) {
+    it(`cada pessoa repete os mesmos 2 dias e, na semana do domingo, só troca um deles (${name})`, () => {
+      const { config, employees } = input();
+      const schedule = generateSchedule({ config, employees });
+      for (const e of employees) expect(spread(schedule[e.id]), e.name).toBe(2);
+      expect(countGaps(config, employees, schedule)).toBe(0);
+    });
+  }
+});
+
 describe('sem turno fixo', () => {
   it('quem não tem turno fixo vai para o turno onde falta gente e diminui os buracos', () => {
     // Mercado de referência sem segunda área e uma balconista a mais: fixa na manhã ela não ajuda a tarde.
