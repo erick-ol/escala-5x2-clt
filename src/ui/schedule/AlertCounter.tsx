@@ -1,3 +1,4 @@
+import type { RestFix } from '../../domain/restFixes';
 import type { LegalAlert } from '../../domain/rules';
 import type { Employee } from '../../domain/types';
 import { alertWhere, employeeName, plural } from './labels';
@@ -55,10 +56,13 @@ export interface AlertListProps {
   onClose(): void;
   /** Avisos de descanso em vez de alertas legais (laranja, outro texto). */
   warning?: boolean;
+  /** Ajustes sugeridos para um aviso de 11h (só na visão do ciclo). */
+  fixesFor?(alert: LegalAlert): RestFix[];
+  onApplyFix?(fix: RestFix): void;
 }
 
 /** Lista de alertas: pessoa, regra e dia. Tocar leva à célula. */
-export function AlertList({ title, alerts, employees, where = alertWhere, onSelect, onClose, warning = false }: AlertListProps) {
+export function AlertList({ title, alerts, employees, where = alertWhere, onSelect, onClose, warning = false, fixesFor, onApplyFix }: AlertListProps) {
   return (
     <Sheet
       tone={warning ? 'gap' : 'alert'}
@@ -79,7 +83,7 @@ export function AlertList({ title, alerts, employees, where = alertWhere, onSele
         <ul className="alert-items">
           {alerts.map((a, i) => (
             <li key={i}>
-              <button type="button" className="alert-item" onClick={() => onSelect(a)}>
+              <button type="button" className={`alert-item${warning ? ' is-warning' : ''}`} onClick={() => onSelect(a)}>
                 <span className={`alert-icon${warning ? ' is-warning' : ''}`} aria-hidden="true">
                   {warning ? '▲' : '!'}
                 </span>
@@ -90,15 +94,45 @@ export function AlertList({ title, alerts, employees, where = alertWhere, onSele
                   <span className="alert-item-msg">{a.message}</span>
                 </span>
               </button>
+              {fixesFor && onApplyFix && a.kind === 'intershift-rest' && <RestFixList fixes={fixesFor(a)} onApply={onApplyFix} />}
             </li>
           ))}
         </ul>
       )}
       <p className="hint">
         {warning
-          ? 'A CLT pede 11h de descanso entre uma jornada e a próxima. O site não bloqueia: confira se dá para ajustar.'
+          ? fixesFor
+            ? 'A CLT pede 11h de descanso entre uma jornada e a próxima. Os ajustes não abrem buraco nem criam alerta legal; depois dá para mudar de novo tocando na célula.'
+            : 'A CLT pede 11h de descanso entre uma jornada e a próxima. O site não bloqueia: confira se dá para ajustar.'
           : 'Alertas não impedem salvar nem exportar. Eles somem quando o problema é resolvido.'}
       </p>
     </Sheet>
+  );
+}
+
+/** Ajustes para um aviso de 11h: o que muda, quantos avisos sobram e o botão de aplicar. */
+function RestFixList({ fixes, onApply }: { fixes: RestFix[]; onApply(fix: RestFix): void }) {
+  if (fixes.length === 0) {
+    return <p className="rest-fixes-none">Sem ajuste simples que não abra buraco ou crie alerta legal.</p>;
+  }
+  return (
+    <div className="rest-fixes">
+      <p className="rest-fixes-label">{fixes.length === 1 ? 'Ajuste possível' : 'Ajustes possíveis'}</p>
+      <ul>
+        {fixes.map((fix) => (
+          <li key={fix.text} className="rest-fix">
+            <span className="rest-fix-body">
+              <span className="rest-fix-text">{fix.text}</span>
+              <span className="rest-fix-effect">
+{`Tira ${plural(fix.warningsBefore - fix.warningsAfter, 'aviso', 'avisos')} de 11h · sem buraco novo`}
+              </span>
+            </span>
+            <button type="button" className="btn btn-sm" onClick={() => onApply(fix)} aria-label={`Aplicar: ${fix.text}`}>
+              Aplicar
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

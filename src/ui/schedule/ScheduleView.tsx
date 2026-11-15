@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { localToday, parseISODate } from '../../domain/dates';
 import { gapKey } from '../../domain/coverage';
 import { generateSchedule } from '../../domain/generator';
+import { applyRestFix, restFixes } from '../../domain/restFixes';
 import type { LegalAlert } from '../../domain/rules';
 import { WEEKS } from '../../domain/types';
 import { weekOf } from '../../domain/time';
@@ -39,6 +40,7 @@ type AlertFilter = { employeeId: string; week: number } | 'all';
 /** Tabela do ciclo com resumo, alertas e edição ao vivo (U8). */
 export function ScheduleView({ onExport, initialError = null }: ScheduleViewProps) {
   const doc = useAppStore((s) => s.document);
+  const setSchedule = useAppStore((s) => s.setSchedule);
   const derived = useDerived();
   const [week, setWeek] = useState(0);
   const [error, setError] = useState<string | null>(initialError);
@@ -317,6 +319,8 @@ export function ScheduleView({ onExport, initialError = null }: ScheduleViewProp
           title={plural(warnings.length, 'aviso no ciclo', 'avisos no ciclo')}
           alerts={warnings}
           employees={doc.employees}
+          fixesFor={(a) => restFixes({ config: doc.config, employees: doc.employees, schedule: doc.schedule!, marks: doc.marks }, a)}
+          onApplyFix={(fix) => setSchedule(applyRestFix(doc.schedule!, fix.changes))}
           onSelect={(a) => {
             setWarningsOpen(false);
             selectAlert(a);

@@ -424,10 +424,14 @@ describe('folgas estáveis', () => {
     ['exemplo antigo, folgas juntas', () => example('together')],
   ] as const;
   for (const [name, input] of cases) {
-    it(`cada pessoa repete os mesmos 2 dias e, na semana do domingo, só troca um deles (${name})`, () => {
+    it(`cada pessoa repete os mesmos dias e, na semana do domingo, só troca um deles (${name})`, () => {
       const { config, employees } = input();
       const schedule = generateSchedule({ config, employees });
-      for (const e of employees) expect(spread(schedule[e.id]), e.name).toBe(2);
+      // Quase todos ficam com 2 dias; no máximo uma pessoa usa um 3º (ex.: folga no sábado antes do domingo
+      // trabalhado, para não fechar às 20:45 e abrir às 06:45).
+      const spreads = employees.map((e) => spread(schedule[e.id]));
+      for (const [i, e] of employees.entries()) expect(spreads[i], e.name).toBeLessThanOrEqual(3);
+      expect(spreads.filter((n) => n > 2).length).toBeLessThanOrEqual(1);
       expect(countGaps(config, employees, schedule)).toBe(0);
     });
   }
@@ -456,17 +460,16 @@ describe('sem turno fixo', () => {
     expect(forbiddenAlerts(config, floatTeam, floating)).toEqual([]);
   });
 
-  it('no exemplo, a Rosi cobre o balcão da tarde nas folgas do Pedro, sem buraco nem alerta legal', () => {
+  it('no exemplo, a Rosi cobre o balcão da tarde em folgas do Pedro sem ficar com menos de 11h de descanso', () => {
     const real = siteExample(new Date('2026-11-14'));
     const schedule = generateSchedule(real);
-    // Em toda folga do Pedro (fora o domingo de turno único) em que a Rosi trabalha e a Rosa segura a manhã,
-    // a Rosi está na tarde. (Se a Rosa também folga, a Rosi fica na manhã e o Lucas cobre a tarde.)
+    // Ela vai para a tarde numa folga do Pedro quando o dia seguinte não a obriga a abrir às 06:15;
+    // nas outras, o Lucas cobre o balcão da tarde pela segunda área.
     const pedroOff = schedule.pedro.flatMap((c, d) => (c.status === 'off' && weekdayOf(d) !== SUNDAY ? [d] : []));
-    const covered = pedroOff.filter((d) => schedule.rosi[d].status === 'work' && schedule.rosa[d].status === 'work');
-    expect(covered.length).toBeGreaterThan(0);
-    for (const d of covered) expect(schedule.rosi[d].shiftId, `dia ${d}`).toBe('tarde');
+    expect(pedroOff.some((d) => schedule.rosi[d].shiftId === 'tarde')).toBe(true);
     expect(countGaps(real.config, real.employees, schedule)).toBe(0);
-    const alerts = Object.values(evaluateRules({ ...real, schedule })).flatMap((r) => r.alerts);
-    expect(alerts).toEqual([]);
+    const reports = evaluateRules({ ...real, schedule });
+    expect(Object.values(reports).flatMap((r) => r.alerts)).toEqual([]);
+    expect(reports.rosi.warnings.filter((w) => w.kind === 'intershift-rest')).toEqual([]);
   });
 });

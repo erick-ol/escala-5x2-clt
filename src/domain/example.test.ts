@@ -64,7 +64,10 @@ describe('exemplo do site', () => {
       const worked = Array.from({ length: WEEKS }, (_, w) => schedule[e.id][dayOfWeekday(w, SUNDAY)].status === 'work');
       expect(worked.some(Boolean), e.name).toBe(true);
     }
-    // O gerador não evita as 11h (viram aviso): quem fecha no sábado pode abrir o domingo, tudo coberto.
+    // Cobertura primeiro; depois o gerador evita ao máximo menos de 11h entre jornadas (sobram 2 avisos,
+    // de quem fecha no sábado e abre o domingo de turno único).
     expect(computeCoverage({ config, employees, schedule, marks: [] }).gaps).toEqual([]);
+    const rest11 = Object.values(evaluateRules({ config, employees, schedule })).flatMap((r) => r.warnings.filter((w) => w.kind === 'intershift-rest'));
+    expect(rest11.length).toBeLessThanOrEqual(2);
   });
 });

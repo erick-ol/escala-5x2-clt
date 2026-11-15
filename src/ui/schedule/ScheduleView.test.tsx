@@ -200,6 +200,25 @@ describe('ScheduleView', () => {
     expect(sheet).toHaveTextContent('A CLT pede 11h de descanso');
   });
 
+  test('aviso de 11h mostra ajustes e aplicar um deles tira o aviso', async () => {
+    seed((d, s) => {
+      const [first, last] = [d.config.shifts[0].id, d.config.shifts[d.config.shifts.length - 1].id];
+      const row = s.andreza;
+      const day = [...Array(6).keys()].find((x) => x > 0 && row[x].status === 'work' && row[x + 1].status === 'work')!;
+      row[day] = { status: 'work', shiftId: last };
+      row[day + 1] = { status: 'work', shiftId: first };
+    });
+    const { user } = renderView();
+    const before = appStore.getState().document.schedule;
+    await user.click(screen.getByRole('button', { name: /aviso(s)? de descanso/ }));
+    const sheet = screen.getByRole('dialog', { name: /avisos? no ciclo/ });
+    expect(sheet).toHaveTextContent(/Ajustes? possíve(l|is)/);
+    const apply = within(sheet).getAllByRole('button', { name: /^Aplicar: / })[0];
+    await user.click(apply);
+    expect(appStore.getState().document.schedule).not.toBe(before);
+    expect(screen.queryByRole('button', { name: /aviso(s)? de descanso/ })).not.toBeInTheDocument();
+  });
+
   test('o painel fecha com Esc e devolve o foco à célula', async () => {
     seed();
     const { user } = renderView();
