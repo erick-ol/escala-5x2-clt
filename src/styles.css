@@ -1,36 +1,39 @@
 /*
-  Direção visual: simples, preto e branco.
-  Cor só para avisos: laranja = buraco de cobertura, vermelho = alerta da CLT, verde = tudo certo.
-  Fonte do sistema; horários em fonte monoespaçada do sistema.
+  Direção visual: editorial calmo.
+  Títulos em serifa (Source Serif 4), texto em Source Sans 3, papel levemente quente,
+  linhas finas no lugar de caixas e um único verde-pinho para ações e seleção.
+  Cores de aviso continuam sendo as únicas outras cores: laranja = buraco de cobertura,
+  vermelho = alerta da CLT, verde = tudo certo.
 */
 :root {
-  /* Tons de cinza: contraste suave, sem preto puro. */
-  --paper: #f7f7f6;
-  --paper-2: #efefed;
+  --paper: #fbfaf7;
+  --paper-2: #f2f0ea;
   --card: #ffffff;
-  --ink: #2a2a2a;
-  --ink-2: #555555;
-  --ink-3: #8c8c8c;
-  --rule: #e4e4e2;
-  --line: #d2d2cf;
-  --brand: #3b3b3b;
+  --ink: #20211f;
+  --ink-2: #5d5f5a;
+  --ink-3: #8b8d86;
+  --rule: #e6e3dc;
+  --line: #d5d2c9;
+  /* Verde-pinho: botões, seleção e marca. Mais escuro e frio que o verde de "tudo certo". */
+  --brand: #234e3a;
+  --brand-hover: #1a3b2c;
   --brand-ink: #ffffff;
-  --brand-soft: #efefed;
-  --off: #f1f1ef;
-  --closed: #dcdcd9;
-  /* Avisos: as únicas cores do site. */
+  --brand-soft: #e8efe9;
+  --off: #f3f1eb;
+  --closed: #e3e0d8;
+  /* Avisos. */
   --gap: #d9620f;
   --gap-soft: #fdeee2;
   --alert: #c4271f;
   --alert-soft: #fbe6e4;
   --ok: #2b7a45;
   --ok-soft: #e8f4ec;
-  /* Turnos se distinguem pela letra, não pela cor. */
-  --shift-a: #5a5a5a;
+  /* Turnos: mesma cor, formas diferentes (cheio, contorno, claro) além da letra. */
+  --shift-a: var(--brand);
   --shift-a-soft: #ffffff;
-  --shift-b: #5a5a5a;
+  --shift-b: var(--brand);
   --shift-b-soft: #ffffff;
-  --shift-c: #5a5a5a;
+  --shift-c: var(--brand);
   --shift-c-soft: #ffffff;
 
   /* Espaçamento: uma escala só, usada em todas as telas. */
@@ -47,16 +50,18 @@
   --header-h: 64px;
   --actionbar-h: 72px;
 
-  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-sans: 'Source Sans 3 Variable', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+  --font-serif: 'Source Serif 4 Variable', Georgia, 'Times New Roman', serif;
   --font-narrow: var(--font-sans);
   --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
-  --radius: 10px;
-  --radius-sm: 8px;
+  --radius: 6px;
+  --radius-sm: 4px;
   --tap: 44px;
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow: none;
 
   font-family: var(--font-sans);
+  font-size: 16px;
   color: var(--ink);
   background: var(--paper);
   -webkit-font-smoothing: antialiased;
@@ -70,8 +75,13 @@ body {
   background: var(--paper);
 }
 
-h1, h2, h3 { font-family: var(--font-sans); letter-spacing: -0.01em; line-height: 1.15; margin: 0; }
-h1 { font-weight: 700; }
+h1, h2, h3 {
+  font-family: var(--font-serif);
+  font-weight: 560;
+  letter-spacing: -0.012em;
+  line-height: 1.15;
+  margin: 0;
+}
 p { line-height: 1.5; }
 
 .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
@@ -85,7 +95,6 @@ p { line-height: 1.5; }
   background: var(--card);
   border: 1px solid var(--rule);
   border-radius: var(--radius);
-  box-shadow: var(--shadow);
 }
 
 /* Botões */
@@ -102,24 +111,23 @@ p { line-height: 1.5; }
   align-items: center;
   justify-content: center;
   gap: 8px;
-  transition: transform 0.08s ease, background 0.15s ease;
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
-.btn:hover { background: var(--paper-2); }
-.btn:active { transform: translateY(1px); }
+.btn:hover { background: var(--paper-2); border-color: var(--ink-3); }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .btn-primary { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); }
-.btn-primary:hover { background: #2a2a2a; }
+.btn-primary:hover { background: var(--brand-hover); border-color: var(--brand-hover); }
 .btn-danger { background: var(--alert); border-color: var(--alert); color: #fff; }
-.btn-danger:hover { background: #a3201a; }
+.btn-danger:hover { background: #a3201a; border-color: #a3201a; }
 .btn-ghost { border-color: transparent; background: transparent; }
-.btn-ghost:hover { background: var(--paper-2); }
+.btn-ghost:hover { background: var(--paper-2); border-color: transparent; }
 .btn-sm { min-height: 36px; padding: 0 12px; font-size: 14px; }
 
-:focus-visible { outline: 2px solid var(--ink-2); outline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 
 /* Campos */
 .field { display: flex; flex-direction: column; gap: 6px; }
-.field > label, .label { font: 600 13px/1.2 var(--font-sans); color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.04em; }
+.field > label, .label { font: 600 14px/1.25 var(--font-sans); color: var(--ink-2); }
 .input, select.input {
   min-height: var(--tap);
   padding: 0 12px;
@@ -135,16 +143,16 @@ p { line-height: 1.5; }
 .input[type='time'] { font-family: var(--font-mono); }
 .input[aria-invalid='true'] { border-color: var(--alert); }
 .error-text { color: var(--alert); font-size: 14px; font-weight: 600; }
-.hint { color: var(--ink-3); font-size: 14px; }
+.hint { color: var(--ink-2); font-size: 14px; }
 
 .checkbox { display: inline-flex; align-items: center; gap: 10px; min-height: var(--tap); cursor: pointer; font-weight: 500; }
-.checkbox input { width: 22px; height: 22px; accent-color: var(--brand); }
+.checkbox input { width: 20px; height: 20px; accent-color: var(--brand); }
 
 /* Etiquetas */
 .tag {
   display: inline-flex; align-items: center; gap: 4px;
-  padding: 2px 8px; border-radius: 999px;
-  font: 700 12px/1.6 var(--font-narrow); letter-spacing: 0.02em;
+  padding: 1px 8px; border-radius: var(--radius-sm);
+  font: 600 13px/1.6 var(--font-sans);
 }
 .tag-gap { background: var(--gap-soft); color: #8a3d05; }
 .tag-alert { background: var(--alert-soft); color: var(--alert); }
@@ -163,7 +171,7 @@ dialog {
 }
 dialog:modal { overscroll-behavior: contain; }
 dialog::backdrop {
-  background: rgb(0 0 0 / 0.45);
+  background: rgb(32 33 31 / 0.4);
   overflow: hidden;
   overscroll-behavior: contain;
 }

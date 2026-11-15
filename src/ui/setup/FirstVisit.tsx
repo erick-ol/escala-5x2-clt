@@ -12,8 +12,11 @@ export function FirstVisit({ onStart }: FirstVisitProps) {
   const replaceDocument = useAppStore((s) => s.replaceDocument);
 
   return (
-    <section className="first-visit card" aria-labelledby="first-visit-title">
-      <p className="first-visit-kicker label">Escala 5x2 · EC 141/2026</p>
+    <section className="first-visit" aria-labelledby="first-visit-title">
+      <p className="first-visit-kicker">
+        <span className="brand-dot" aria-hidden="true" />
+        Escala 5x2 <span className="first-visit-law">· EC 141/2026</span>
+      </p>
       <h1 id="first-visit-title" className="first-visit-title">
         Monte a escala 5x2 da sua equipe em minutos.
       </h1>
@@ -21,7 +24,7 @@ export function FirstVisit({ onStart }: FirstVisitProps) {
         Informe o horário da loja, os turnos e a equipe; o site gera a escala dentro das regras e mostra onde falta gente.
       </p>
       <div className="first-visit-examples" role="group" aria-labelledby="first-visit-examples-title">
-        <h2 id="first-visit-examples-title" className="first-visit-examples-title label">
+        <h2 id="first-visit-examples-title" className="first-visit-examples-title">
           Ver um exemplo pronto
         </h2>
         <ul className="first-visit-example-list">
