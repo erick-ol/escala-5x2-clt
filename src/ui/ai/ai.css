@@ -1,0 +1,76 @@
+/* "Gerar com IA": usa a base do painel de ajuda (help.css) e centraliza nas telas maiores. */
+.ai-panel { max-width: 560px; }
+@media (min-width: 640px) {
+  .ai-panel { margin: auto; }
+}
+
+.ai-lead { margin: 0 0 var(--s-4); color: var(--ink-2); font-size: 15px; line-height: 1.55; }
+
+.ai-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-5); }
+.ai-step { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: var(--s-3); align-items: start; }
+.ai-step-content { display: flex; flex-direction: column; gap: var(--s-2); min-width: 0; }
+.ai-step-content .help-step-title { margin-bottom: 0; }
+
+.ai-row { display: flex; flex-wrap: wrap; gap: var(--s-2); align-items: center; }
+.ai-links { display: flex; flex-wrap: wrap; gap: var(--s-2); }
+.ai-links .btn { text-decoration: none; }
+
+.ai-textarea {
+  min-height: 0;
+  padding: 10px 12px;
+  font: 400 13px/1.45 var(--font-mono);
+  resize: vertical;
+}
+.ai-prompt { margin-top: var(--s-2); color: var(--ink-2); background: var(--paper); }
+
+.ai-details summary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  color: var(--brand);
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.ai-errors {
+  padding: var(--s-3) var(--s-4);
+  border-radius: var(--radius-sm);
+  background: var(--alert-soft);
+  color: var(--ink);
+  font-size: 14px;
+}
+.ai-errors-title { margin: 0 0 var(--s-1); font-weight: 700; color: var(--alert); }
+.ai-errors ul { margin: 0 0 var(--s-2); padding-left: 18px; }
+.ai-errors li { margin: 2px 0; line-height: 1.4; }
+.ai-errors-hint { margin: 0 0 var(--s-2); color: var(--ink-2); }
+
+.ai-warnings { margin: 0; padding-left: 18px; color: #8a3d05; font-size: 14px; }
+
+.ai-privacy {
+  margin: var(--s-5) 0 0;
+  padding-top: var(--s-3);
+  border-top: 1px solid var(--rule);
+  color: var(--ink-3);
+  font-size: 13px;
+}
+
+/* Tela inicial: chamada para "Gerar com IA". */
+.first-visit-ai {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-4);
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--brand);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+}
+.first-visit-ai-title { margin: 0 0 2px; font: 600 17px/1.25 var(--font-serif); }
+.first-visit-ai-text { margin: 0; color: var(--ink-2); font-size: 15px; }
+.first-visit-ai .btn { align-self: stretch; }
+@media (min-width: 640px) {
+  .first-visit-ai { flex-direction: row; align-items: center; justify-content: space-between; gap: var(--s-5); }
+  .first-visit-ai .btn { align-self: auto; flex: none; }
+}
+.ai-manual { margin: 0; }
