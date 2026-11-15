@@ -1,8 +1,9 @@
-import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import { createPortal, flushSync } from 'react-dom';
+import { useId, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { backupFileName, serializeBackup } from '../../state/backup';
 import { appStore, useAppStore } from '../../state/store';
 import { RestoreBackupButton } from '../RestoreBackupButton';
+import { LIGHT_DISMISS, useModalDialog } from '../useModalDialog';
 import { monthLabel } from '../../domain/dates';
 import { ImageExport, cyclePages, monthPages } from './ImageExport';
 import { MonthPrintSheet, PrintSheet } from './PrintSheet';
@@ -19,9 +20,6 @@ export interface ExportPanelProps {
   month?: { year: number; month: number };
   onClose(): void;
 }
-
-const FOCUSABLE =
-  'button:not([disabled]), [href], input:not([disabled]):not([tabindex="-1"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 /** Painel de exportação (R20, R21): imprimir, imagem para WhatsApp e backup em destaque. */
 export function ExportPanel({ month, onClose }: ExportPanelProps) {
@@ -57,8 +55,8 @@ export function ExportPanel({ month, onClose }: ExportPanelProps) {
     window.print();
   };
 
-  const panelRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useModalDialog(onClose, closeRef);
   const titleId = useId();
   const printId = useId();
   const imageId = useId();
@@ -68,36 +66,6 @@ export function ExportPanel({ month, onClose }: ExportPanelProps) {
   const personalId = useId();
   const personSelectId = useId();
 
-  useEffect(() => {
-    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    closeRef.current?.focus();
-    return () => {
-      if (opener && opener.isConnected) opener.focus();
-    };
-  }, []);
-
-  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (panelRef.current && !panelRef.current.contains(event.target as Node)) return;
-    if (event.key === 'Escape') {
-      event.stopPropagation();
-      onClose();
-      return;
-    }
-    if (event.key !== 'Tab' || !panelRef.current) return;
-    const items = Array.from(panelRef.current.querySelectorAll<HTMLElement>(FOCUSABLE));
-    if (items.length === 0) return;
-    const first = items[0];
-    const last = items[items.length - 1];
-    const active = document.activeElement;
-    if (event.shiftKey && (active === first || !panelRef.current.contains(active))) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && (active === last || !panelRef.current.contains(active))) {
-      event.preventDefault();
-      first.focus();
-    }
-  };
-
   const downloadBackup = () => {
     const doc = appStore.getState().document;
     const blob = new Blob([serializeBackup(doc)], { type: 'application/json' });
@@ -106,178 +74,168 @@ export function ExportPanel({ month, onClose }: ExportPanelProps) {
     setJustBackedUp(true);
   };
 
-  return createPortal(
-    <div className="export-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div
-        ref={panelRef}
-        className="export-panel card"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        onKeyDown={onKeyDown}
-      >
-        <header className="export-head">
-          <div>
-            <p className="export-kicker label">{model.storeName}</p>
-            <h2 id={titleId} className="export-title">
-              Exportar escala
-            </h2>
-          </div>
-          <button ref={closeRef} type="button" className="btn btn-ghost export-close" onClick={onClose}>
-            Fechar
-          </button>
-        </header>
+  return (
+    <dialog ref={panelRef} className="export-panel card" aria-labelledby={titleId} {...LIGHT_DISMISS}>
+      <header className="export-head">
+        <div>
+          <p className="export-kicker label">{model.storeName}</p>
+          <h2 id={titleId} className="export-title">
+            Exportar escala
+          </h2>
+        </div>
+        <button ref={closeRef} type="button" className="btn btn-ghost export-close" onClick={onClose}>
+          Fechar
+        </button>
+      </header>
 
-        <section className="export-section export-backup" aria-labelledby={backupId}>
-          <h3 id={backupId} className="export-section-title">
-            Backup
-          </h3>
-          <p className="hint">
-            Guarde uma cópia da configuração e da escala. O iPhone pode apagar os dados do site depois de alguns dias
-            sem uso.
-          </p>
-          <button type="button" className="btn btn-primary export-backup-btn" onClick={downloadBackup}>
-            Baixar backup
-          </button>
-          <p className="export-backup-status" aria-live="polite">
-            {justBackedUp && lastBackupAt
-              ? `Backup baixado em ${formatDateTime(lastBackupAt)}`
-              : lastBackupAt
-                ? `Último backup em ${formatDateTime(lastBackupAt)}`
-                : 'Você ainda não baixou nenhum backup.'}
-          </p>
-          <RestoreBackupButton variant="ghost" className="export-restore" />
-        </section>
+      <section className="export-section export-backup" aria-labelledby={backupId}>
+        <h3 id={backupId} className="export-section-title">
+          Backup
+        </h3>
+        <p className="hint">
+          Guarde uma cópia da configuração e da escala. O iPhone pode apagar os dados do site depois de alguns dias
+          sem uso.
+        </p>
+        <button type="button" className="btn btn-primary export-backup-btn" onClick={downloadBackup}>
+          Baixar backup
+        </button>
+        <p className="export-backup-status" aria-live="polite">
+          {justBackedUp && lastBackupAt
+            ? `Backup baixado em ${formatDateTime(lastBackupAt)}`
+            : lastBackupAt
+              ? `Último backup em ${formatDateTime(lastBackupAt)}`
+              : 'Você ainda não baixou nenhum backup.'}
+        </p>
+        <RestoreBackupButton variant="ghost" className="export-restore" />
+      </section>
 
-        {model.hasSchedule ? (
-          <>
-            {month && (
-              <section className="export-section" aria-labelledby={scopeId}>
-                <h3 id={scopeId} className="export-section-title">
-                  O que exportar
-                </h3>
-                <div className="seg export-scope" role="group" aria-labelledby={scopeId}>
-                  <button type="button" className="seg-btn" aria-pressed={scope === 'month'} onClick={() => setScope('month')}>
-                    Mês: {monthLabel(month.year, month.month)}
-                  </button>
-                  <button type="button" className="seg-btn" aria-pressed={scope === 'cycle'} onClick={() => setScope('cycle')}>
-                    Ciclo de 3 semanas
-                  </button>
-                </div>
-                {monthModel && (
-                  <>
-                    <span id={formatId} className="label export-format-label">
-                      Formato
-                    </span>
-                    <div className="seg export-scope" role="group" aria-labelledby={formatId}>
-                      <button
-                        type="button"
-                        className="seg-btn"
-                        aria-pressed={format === 'calendar'}
-                        onClick={() => setFormat('calendar')}
-                      >
-                        Calendário
-                      </button>
-                      <button type="button" className="seg-btn" aria-pressed={format === 'table'} onClick={() => setFormat('table')}>
-                        Tabela por semana
-                      </button>
-                    </div>
-                  </>
-                )}
-              </section>
-            )}
-            <section className="export-section" aria-labelledby={printId}>
-              <h3 id={printId} className="export-section-title">
-                Imprimir
+      {model.hasSchedule ? (
+        <>
+          {month && (
+            <section className="export-section" aria-labelledby={scopeId}>
+              <h3 id={scopeId} className="export-section-title">
+                O que exportar
               </h3>
-              <p className="hint">
-                {calendar && teamCalendar
-                  ? `Calendário de ${teamCalendar.monthLabel.toLowerCase()} numa folha A4 deitada${teamCalendar.printPages.length > 1 ? ' (duas folhas, pelo tamanho da equipe)' : ''}: quem trabalha em cada turno e quem folga, legível em preto e branco.`
-                  : monthModel
-                    ? `Folhas em paisagem com as semanas de ${monthModel.monthLabel.toLowerCase()} nas datas reais, legíveis em preto e branco.`
-                    : 'Uma folha em paisagem com as 3 semanas do ciclo, legível em preto e branco.'}
-              </p>
-              <button type="button" className="btn" onClick={() => print('team')}>
-                Imprimir escala
-              </button>
-            </section>
-
-            <section className="export-section" aria-labelledby={imageId}>
-              <h3 id={imageId} className="export-section-title">
-                Imagem para WhatsApp
-              </h3>
-              {calendar && teamCalendar ? (
+              <div className="seg export-scope" role="group" aria-labelledby={scopeId}>
+                <button type="button" className="seg-btn" aria-pressed={scope === 'month'} onClick={() => setScope('month')}>
+                  Mês: {monthLabel(month.year, month.month)}
+                </button>
+                <button type="button" className="seg-btn" aria-pressed={scope === 'cycle'} onClick={() => setScope('cycle')}>
+                  Ciclo de 3 semanas
+                </button>
+              </div>
+              {monthModel && (
                 <>
-                  <p className="hint">Uma imagem com o mês inteiro em calendário. Para ver de perto, use o zoom do celular.</p>
-                  <TeamCalendarImageExport model={teamCalendar} />
-                </>
-              ) : (
-                <>
-                  <p className="hint">Uma imagem por semana, para caber na tela do celular.</p>
-                  <ImageExport key={monthModel ? 'month' : 'cycle'} storeName={model.storeName} legend={model.legend} pages={pages} />
+                  <span id={formatId} className="label export-format-label">
+                    Formato
+                  </span>
+                  <div className="seg export-scope" role="group" aria-labelledby={formatId}>
+                    <button
+                      type="button"
+                      className="seg-btn"
+                      aria-pressed={format === 'calendar'}
+                      onClick={() => setFormat('calendar')}
+                    >
+                      Calendário
+                    </button>
+                    <button type="button" className="seg-btn" aria-pressed={format === 'table'} onClick={() => setFormat('table')}>
+                      Tabela por semana
+                    </button>
+                  </div>
                 </>
               )}
             </section>
+          )}
+          <section className="export-section" aria-labelledby={printId}>
+            <h3 id={printId} className="export-section-title">
+              Imprimir
+            </h3>
+            <p className="hint">
+              {calendar && teamCalendar
+                ? `Calendário de ${teamCalendar.monthLabel.toLowerCase()} numa folha A4 deitada${teamCalendar.printPages.length > 1 ? ' (duas folhas, pelo tamanho da equipe)' : ''}: quem trabalha em cada turno e quem folga, legível em preto e branco.`
+                : monthModel
+                  ? `Folhas em paisagem com as semanas de ${monthModel.monthLabel.toLowerCase()} nas datas reais, legíveis em preto e branco.`
+                  : 'Uma folha em paisagem com as 3 semanas do ciclo, legível em preto e branco.'}
+            </p>
+            <button type="button" className="btn" onClick={() => print('team')}>
+              Imprimir escala
+            </button>
+          </section>
 
-            {person && (
-              <section className="export-section export-personal" aria-labelledby={personalId}>
-                <h3 id={personalId} className="export-section-title">
-                  Por funcionário
-                </h3>
-                <p className="hint">
-                  {monthModel
-                    ? `Calendário de ${monthModel.monthLabel.toLowerCase()} de uma pessoa, de domingo a sábado, para entregar a ela: horários, intervalo, folgas e o total de cada semana.`
-                    : 'Calendário de uma pessoa nas 3 semanas do ciclo, de domingo a sábado, para entregar a ela: horários, intervalo, folgas e o total de cada semana.'}
-                </p>
-                <div className="field">
-                  <label htmlFor={personSelectId}>Funcionário</label>
-                  <select
-                    id={personSelectId}
-                    className="input"
-                    value={person.employeeId}
-                    onChange={(e) => setPersonId(e.target.value)}
-                  >
-                    {personalModels.map((m) => (
-                      <option key={m.employeeId} value={m.employeeId}>
-                        {m.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div
-                  className="pp-preview"
-                  data-testid="personal-preview"
-                  role="region"
-                  aria-label={`Prévia da escala de ${person.name}`}
-                  tabIndex={0}
-                >
-                  <PersonalCalendarBody model={person} />
-                </div>
-                <div className="export-personal-actions">
-                  <PersonalImageExport model={person} />
-                  <button type="button" className="btn" onClick={() => print('person')}>
-                    Imprimir só esta pessoa
-                  </button>
-                  <button type="button" className="btn" onClick={() => print('all')}>
-                    Imprimir todos (uma página por pessoa)
-                  </button>
-                </div>
-              </section>
-            )}
+          <section className="export-section" aria-labelledby={imageId}>
+            <h3 id={imageId} className="export-section-title">
+              Imagem para WhatsApp
+            </h3>
             {calendar && teamCalendar ? (
-              <TeamCalendarPrintSheet model={teamCalendar} skip={printTarget !== 'team'} />
-            ) : monthModel ? (
-              <MonthPrintSheet model={monthModel} skip={printTarget !== 'team'} />
+              <>
+                <p className="hint">Uma imagem com o mês inteiro em calendário. Para ver de perto, use o zoom do celular.</p>
+                <TeamCalendarImageExport model={teamCalendar} />
+              </>
             ) : (
-              <PrintSheet model={model} skip={printTarget !== 'team'} />
+              <>
+                <p className="hint">Uma imagem por semana, para caber na tela do celular.</p>
+                <ImageExport key={monthModel ? 'month' : 'cycle'} storeName={model.storeName} legend={model.legend} pages={pages} />
+              </>
             )}
-            {printSheets.length > 0 && <PersonalPrintSheet models={printSheets} />}
-          </>
-        ) : (
-          <p className="export-empty">Gere a escala para poder imprimir ou compartilhar a imagem.</p>
-        )}
-      </div>
-    </div>,
-    document.body,
+          </section>
+
+          {person && (
+            <section className="export-section export-personal" aria-labelledby={personalId}>
+              <h3 id={personalId} className="export-section-title">
+                Por funcionário
+              </h3>
+              <p className="hint">
+                {monthModel
+                  ? `Calendário de ${monthModel.monthLabel.toLowerCase()} de uma pessoa, de domingo a sábado, para entregar a ela: horários, intervalo, folgas e o total de cada semana.`
+                  : 'Calendário de uma pessoa nas 3 semanas do ciclo, de domingo a sábado, para entregar a ela: horários, intervalo, folgas e o total de cada semana.'}
+              </p>
+              <div className="field">
+                <label htmlFor={personSelectId}>Funcionário</label>
+                <select
+                  id={personSelectId}
+                  className="input"
+                  value={person.employeeId}
+                  onChange={(e) => setPersonId(e.target.value)}
+                >
+                  {personalModels.map((m) => (
+                    <option key={m.employeeId} value={m.employeeId}>
+                      {m.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div
+                className="pp-preview"
+                data-testid="personal-preview"
+                role="region"
+                aria-label={`Prévia da escala de ${person.name}`}
+                tabIndex={0}
+              >
+                <PersonalCalendarBody model={person} />
+              </div>
+              <div className="export-personal-actions">
+                <PersonalImageExport model={person} />
+                <button type="button" className="btn" onClick={() => print('person')}>
+                  Imprimir só esta pessoa
+                </button>
+                <button type="button" className="btn" onClick={() => print('all')}>
+                  Imprimir todos (uma página por pessoa)
+                </button>
+              </div>
+            </section>
+          )}
+          {calendar && teamCalendar ? (
+            <TeamCalendarPrintSheet model={teamCalendar} skip={printTarget !== 'team'} />
+          ) : monthModel ? (
+            <MonthPrintSheet model={monthModel} skip={printTarget !== 'team'} />
+          ) : (
+            <PrintSheet model={model} skip={printTarget !== 'team'} />
+          )}
+          {printSheets.length > 0 && <PersonalPrintSheet models={printSheets} />}
+        </>
+      ) : (
+        <p className="export-empty">Gere a escala para poder imprimir ou compartilhar a imagem.</p>
+      )}
+    </dialog>
   );
 }

@@ -49,7 +49,9 @@ describe('ConfirmDialog', () => {
 
     await user.click(screen.getByRole('button', { name: 'Abrir' }));
     const dialog = screen.getByRole('dialog', { name: 'Remover?' });
-    expect(dialog).toHaveAttribute('aria-modal', 'true');
+    // <dialog> nativo aberto como modal: o navegador cuida da semântica de modal.
+    expect(dialog.tagName).toBe('DIALOG');
+    expect(dialog).toHaveAttribute('open');
     expect(screen.getByRole('button', { name: 'Cancelar' })).toHaveFocus();
 
     await user.keyboard('{Escape}');
@@ -59,21 +61,17 @@ describe('ConfirmDialog', () => {
     expect(screen.getByRole('button', { name: 'Abrir' })).toHaveFocus();
   });
 
-  test('Tab fica preso dentro do diálogo; botão Cancelar cancela', async () => {
+  // Prender o Tab é do showModal() nativo (o resto da página fica inerte); o jsdom não implementa isso.
+  test('botão Cancelar cancela e o foco volta para quem abriu', async () => {
     const user = userEvent.setup();
     const onCancel = vi.fn();
     render(<Harness onCancel={onCancel} />);
     await user.click(screen.getByRole('button', { name: 'Abrir' }));
 
-    await user.tab();
-    expect(screen.getByRole('button', { name: 'Remover pessoa' })).toHaveFocus();
-    await user.tab();
-    expect(screen.getByRole('button', { name: 'Cancelar' })).toHaveFocus();
-    await user.tab({ shift: true });
-    expect(screen.getByRole('button', { name: 'Remover pessoa' })).toHaveFocus();
-
     await user.click(screen.getByRole('button', { name: 'Cancelar' }));
     expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Abrir' })).toHaveFocus();
   });
 });
 

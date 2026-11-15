@@ -203,17 +203,11 @@
 .setup-woman .hint { margin: 0 0 0 32px; font-size: 13px; }
 
 /* ---------- Diálogo de confirmação ---------- */
-.confirm-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 50;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  padding: 16px;
-  background: rgba(0, 0, 0, 0.45);
+.confirm-dialog {
+  width: calc(100% - 32px); max-width: 440px; padding: 20px;
+  margin: auto auto 16px; /* celular: perto do polegar; telas maiores: centralizado */
 }
-.confirm-dialog { width: 100%; max-width: 440px; padding: 20px; display: flex; flex-direction: column; gap: 12px; }
+.confirm-dialog[open] { display: flex; flex-direction: column; gap: 12px; }
 .confirm-title { font-size: 19px; font-weight: 800; }
 .confirm-body p { margin: 0; color: var(--ink-2); }
 .confirm-actions { display: flex; flex-direction: column-reverse; gap: 8px; }
@@ -225,7 +219,7 @@
   .setup-minimum-row { grid-template-columns: 1fr 88px; }
   .first-visit-actions { flex-direction: row; flex-wrap: wrap; }
   .first-visit-actions .btn, .first-visit-actions .restore-backup { flex: 1 1 0; }
-  .confirm-backdrop { align-items: center; }
+  .confirm-dialog { margin: auto; }
   .confirm-actions { flex-direction: row; justify-content: flex-end; }
   .confirm-actions .btn { width: auto; }
 }

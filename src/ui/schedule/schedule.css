@@ -396,19 +396,16 @@
 }
 
 /* ---------- Painel inferior ---------- */
-.sheet-backdrop {
-  position: fixed; inset: 0; z-index: 60;
-  display: flex; align-items: flex-end; justify-content: center;
-  background: rgba(0, 0, 0, 0.45);
-}
 .sheet {
   width: 100%; max-width: 520px; max-height: 88vh;
-  display: flex; flex-direction: column;
+  margin: auto auto 0; /* celular: preso embaixo; telas maiores: centralizado */
+  overflow: hidden; /* quem rola é o .sheet-body */
   background: var(--card);
   border-radius: 16px 16px 0 0;
   border-top: 5px solid var(--brand);
   animation: sheet-in 0.18s ease-out;
 }
+.sheet[open] { display: flex; flex-direction: column; }
 .sheet:focus { outline: none; }
 .sheet-gap { border-top-color: var(--gap); }
 .sheet-alert { border-top-color: var(--alert); }
@@ -426,8 +423,7 @@
 }
 .sheet-footer > :only-child { grid-column: 1 / -1; }
 @media (min-width: 640px) {
-  .sheet-backdrop { align-items: center; }
-  .sheet { border-radius: 14px; }
+  .sheet { margin: auto; border-radius: 14px; }
 }
 
 .sheet-readonly {
