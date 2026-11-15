@@ -42,6 +42,8 @@
   --s-6: 32px;
   --s-7: 48px;
   --gutter: 16px;
+  /* Largura máxima de todas as telas (configuração, escala, cabeçalho e rodapé): a troca de tela não muda a largura. */
+  --page-width: 960px;
   --header-h: 64px;
   --actionbar-h: 72px;
 
@@ -74,7 +76,7 @@ p { line-height: 1.5; }
 
 .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 
-.container { width: 100%; max-width: 1180px; margin: 0 auto; padding: 0 var(--gutter); }
+.container { width: 100%; max-width: var(--page-width); margin: 0 auto; padding: 0 var(--gutter); }
 @media (min-width: 768px) {
   :root { --gutter: 32px; }
 }
@@ -156,3 +158,14 @@ p { line-height: 1.5; }
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
+
+/* Campo de data em DD/MM/AAAA (DateInput): texto com máscara + calendário nativo escondido atrás do botão. */
+.date-input-row { position: relative; display: flex; gap: 8px; align-items: stretch; }
+.date-input-row .input { flex: 1 1 auto; min-width: 0; }
+.date-input-pick { flex: none; }
+.date-input-native {
+  position: absolute; left: 0; bottom: 0;
+  width: 1px; height: 1px; padding: 0; border: 0;
+  opacity: 0; pointer-events: none;
+}
+.date-input-error { margin: 6px 0 0; }

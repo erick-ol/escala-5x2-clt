@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
+import { isoToBR } from '../DateInput';
 import userEvent from '@testing-library/user-event';
 import { addDays } from '../../domain/dates';
 import { referenceDocument as exampleDocument } from '../../test/fixtures';
@@ -163,7 +164,11 @@ describe('Visão Mês', () => {
     seed();
     const { user } = await openMonth();
     await user.click(screen.getByRole('button', { name: 'alterar' }));
-    fireEvent.change(screen.getByLabelText('Início do ciclo (domingo)'), { target: { value: '2026-12-09' } });
+    const field = screen.getByLabelText('Início do ciclo (domingo)');
+    expect(field).toHaveValue(isoToBR(doc().calendar.cycleStart));
+    await user.clear(field);
+    await user.type(field, '09122026');
+    expect(field).toHaveValue('06/12/2026');
     expect(doc().calendar.cycleStart).toBe('2026-12-06');
     expect(screen.getByText(/O ciclo começa em:/)).toHaveTextContent('O ciclo começa em: domingo, 06/12/2026');
     expect(screen.getAllByRole('heading', { level: 3 })[0]).toHaveTextContent('29/11 – 05/12 · Semana 3 do ciclo');

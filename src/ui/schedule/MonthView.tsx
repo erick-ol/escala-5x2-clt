@@ -1,4 +1,5 @@
 import { useId, useMemo, useState, type ReactNode } from 'react';
+import { DateInput } from '../DateInput';
 import { gapKey } from '../../domain/coverage';
 import { formatDayMonth, formatFullDate, isISODate, monthLabel, shiftMonth, weekdayOfDate } from '../../domain/dates';
 import type { MonthAlert, ProjectedWeek } from '../../domain/month';
@@ -243,16 +244,7 @@ export function MonthView({ year, month, onChangeMonth, switcher }: MonthViewPro
             {editingStart && (
               <div className="field mv-cycle-field">
                 <label htmlFor={startInputId}>Início do ciclo (domingo)</label>
-                <input
-                  id={startInputId}
-                  type="date"
-                  className="input mono"
-                  step={7}
-                  min="2020-01-05"
-                  value={cycleStart}
-                  aria-describedby={startHintId}
-                  onChange={(e) => onStartChange(e.target.value)}
-                />
+                <DateInput id={startInputId} min="2020-01-05" value={cycleStart} aria-describedby={startHintId} onChange={onStartChange} />
               </div>
             )}
             <p id={startHintId} className="hint mv-cycle-hint">
