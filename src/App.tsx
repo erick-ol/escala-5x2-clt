@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react';
 import { appStore, requestPersistentStorage, useAppStore } from './state/store';
 import { fitAddedEmployees, runGenerate } from './state/useDerived';
 import { ConfirmDialog } from './ui/ConfirmDialog';
+import { AiPanel, type AiImportSource } from './ui/ai/AiPanel';
 import { ExportPanel } from './ui/export/ExportPanel';
+import { HelpButton } from './ui/help/HelpButton';
 import { LegalNotice } from './ui/LegalNotice';
 import { ScheduleView, type MonthRef } from './ui/schedule/ScheduleView';
 import { FirstVisit } from './ui/setup/FirstVisit';
@@ -21,6 +23,7 @@ function initialView(): View {
 export function App() {
   const [view, setView] = useState<View>(initialView);
   const [exportOpen, setExportOpen] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false);
   /** Mês mostrado na visão Mês quando "Exportar" foi tocado (a exportação oferece a folha do mês). */
   const [exportMonth, setExportMonth] = useState<MonthRef | null>(null);
   const [confirmRegen, setConfirmRegen] = useState(false);
@@ -58,6 +61,14 @@ export function App() {
     showSchedule(null);
   };
 
+  /** Depois de importar pelo "Gerar com IA": o código da IA não traz escala, então o site gera. */
+  const onAiImported = (source: AiImportSource) => {
+    setAiOpen(false);
+    const imported = appStore.getState().document;
+    if (source === 'backup' && imported.schedule) showSchedule(null);
+    else showSchedule(runGenerate());
+  };
+
   const hasSchedule = useAppStore((s) => s.document.schedule !== null);
 
   return (
@@ -66,7 +77,7 @@ export function App() {
 
       {view === 'first' && (
         <main className="container app-main">
-          <FirstVisit onStart={() => openWizard()} />
+          <FirstVisit onStart={() => openWizard()} onOpenAi={() => setAiOpen(true)} />
         </main>
       )}
 
@@ -114,6 +125,9 @@ export function App() {
       <div className="container app-footer">
         <LegalNotice />
       </div>
+
+      <HelpButton aboveBar={view !== 'first'} onOpenAi={() => setAiOpen(true)} />
+      {aiOpen && <AiPanel onClose={() => setAiOpen(false)} onImported={onAiImported} />}
 
       {exportOpen && <ExportPanel month={exportMonth ?? undefined} onClose={() => setExportOpen(false)} />}
 

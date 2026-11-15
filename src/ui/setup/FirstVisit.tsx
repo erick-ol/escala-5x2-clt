@@ -1,13 +1,16 @@
 import { EXAMPLES, emptyDocument } from '../../domain/example';
 import { useAppStore } from '../../state/store';
 import { RestoreBackupButton } from '../RestoreBackupButton';
+import '../ai/ai.css';
 import './setup.css';
 
 export interface FirstVisitProps {
   onStart(): void;
+  /** Abre o painel "Gerar com IA". */
+  onOpenAi?(): void;
 }
 
-export function FirstVisit({ onStart }: FirstVisitProps) {
+export function FirstVisit({ onStart, onOpenAi }: FirstVisitProps) {
   const loadExample = useAppStore((s) => s.loadExample);
   const replaceDocument = useAppStore((s) => s.replaceDocument);
 
@@ -51,6 +54,20 @@ export function FirstVisit({ onStart }: FirstVisitProps) {
           ))}
         </ul>
       </div>
+      {onOpenAi && (
+        <div className="first-visit-ai">
+          <div>
+            <p className="first-visit-ai-title">Prefere conversar?</p>
+            <p className="first-visit-ai-text">
+              Monte com o ChatGPT, o Claude ou outra IA: ela faz as perguntas, mostra um rascunho e entrega tudo pronto para
+              importar aqui.
+            </p>
+          </div>
+          <button type="button" className="btn" onClick={onOpenAi}>
+            Gerar com IA
+          </button>
+        </div>
+      )}
       <div className="first-visit-actions">
         <button
           type="button"
