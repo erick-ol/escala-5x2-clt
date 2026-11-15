@@ -7,84 +7,80 @@
   max-height: calc(100dvh - 24px);
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 0 16px 24px;
+  padding: 0 16px 20px;
   border-radius: var(--radius) var(--radius) 0 0;
-  border-top: 6px solid var(--brand);
 }
 .export-head {
   position: sticky;
   top: 0;
   z-index: 1;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
-  padding: 14px 0 10px;
+  padding: 18px 0 12px;
   background: var(--card);
-  border-bottom: 1px solid var(--rule);
 }
-.export-kicker { margin: 0 0 2px; color: var(--brand); }
-.export-title { font-size: 22px; font-weight: 700; }
-.export-close { min-height: var(--tap); }
+.export-title { font-size: 26px; font-weight: 560; }
+.export-store { margin: 2px 0 0; font-size: 14px; color: var(--ink-2); }
+.export-close { min-height: var(--tap); margin-right: -10px; }
 
-.export-section {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 18px 0;
-  border-bottom: 1px dashed var(--rule);
-}
-.export-section:last-of-type { border-bottom: 0; }
-.export-section .hint { margin: 0; }
-.export-section-title {
-  font: 700 13px/1.2 var(--font-sans);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--ink-2);
-}
+/* Escolhas: para quem, funcionário, período e formato. Só aparecem as que fazem sentido. */
+.export-options { display: flex; flex-direction: column; gap: 14px; padding: 6px 0 18px; }
+.export-option { display: flex; flex-direction: column; gap: 6px; }
+.export-option .seg-btn { font-size: 15px; font-weight: 600; padding: 0 8px; }
+/* Escolha marcada em verde claro: o único botão escuro do painel é "Compartilhar imagem". */
+.export-option .seg-btn[aria-pressed='true'] { background: var(--brand-soft); color: var(--brand); box-shadow: inset 0 0 0 1.5px var(--brand); }
 
+/* Ações: compartilhar imagem (principal) e imprimir, lado a lado. */
+.export-actions { display: flex; flex-direction: column; gap: 10px; padding: 18px 0 20px; border-top: 1px solid var(--rule); }
+.export-print-all { align-self: flex-start; padding: 0 4px; color: var(--ink-2); text-decoration: underline; text-underline-offset: 3px; }
+.export-print-all:hover { color: var(--ink); background: transparent; }
+.export-empty { margin: 8px 0 20px; color: var(--ink-2); }
+
+/* Backup: rodapé discreto, sempre visível no fim do painel. */
 .export-backup {
-  margin-top: 14px;
-  padding: 16px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--brand-soft);
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 14px 0 0;
+  border-top: 1px solid var(--rule);
 }
-.export-backup-btn { width: 100%; min-height: 52px; font-size: 17px; }
-.export-backup-status { margin: 0; font-size: 14px; font-weight: 600; color: var(--brand); }
-.export-restore .btn { width: 100%; }
-.export-empty { margin: 18px 0 0; color: var(--ink-2); }
+.export-backup-title { font: 600 15px/1.2 var(--font-sans); }
+.export-backup-status { margin: 2px 0 0; font-size: 13px; line-height: 1.4; color: var(--ink-2); }
+.export-backup-actions { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 4px 8px; }
+.export-backup-actions .btn { min-height: 40px; }
+.export-restore .error-text { margin: 4px 0 0; }
 
 .image-week-picker {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
-  margin: 0;
+  margin: 0 0 4px;
   padding: 0;
   border: 0;
   min-width: 0;
 }
 .image-week-picker .label { grid-column: 1 / -1; margin: 0 0 2px; padding: 0; }
 .week-btn {
-  min-height: var(--tap);
+  min-height: 40px;
   padding: 0 14px;
-  border: 1px solid var(--rule);
-  border-radius: 999px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
   background: var(--card);
   color: var(--ink);
   font: 600 15px var(--font-narrow);
   cursor: pointer;
 }
-.week-btn.is-active { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); }
+.week-btn.is-active { background: var(--brand-soft); border-color: var(--brand); color: var(--brand); }
 .image-export { display: flex; flex-direction: column; gap: 10px; }
+.image-export-status:empty { display: none; }
 .image-export-status .hint { margin: 0; }
-.image-export .error-text { margin: 0; }
-.image-export-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-.image-export-actions .btn-primary { flex: 1 1 auto; }
+.image-export-error { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.image-export-error .error-text { margin: 0; flex: 1 1 200px; }
+.image-export-actions { display: grid; grid-template-columns: 2fr 1fr; gap: 8px; }
+.image-export-actions .btn { min-height: 48px; }
 
 @media (min-width: 640px) {
-  .export-panel { margin: auto; max-height: calc(100dvh - 32px); border-radius: var(--radius); }
-  .export-panel { border-radius: var(--radius); padding: 0 24px 24px; }
+  .export-panel { margin: auto; max-width: 480px; max-height: calc(100dvh - 32px); border-radius: var(--radius); padding: 0 24px 20px; }
 }
 
 /* ---------- Imagem da semana (fora da tela, 1080px, vira PNG) ---------- */
@@ -94,38 +90,61 @@
   left: -20000px;
   pointer-events: none;
 }
+/* Marca no topo das três imagens (semana, mês da equipe, por pessoa). */
+.xi-brand { display: flex; align-items: center; gap: 10px; margin: 0 0 18px; font: 600 24px/1 var(--font-serif); color: var(--ink); }
+.xi-dot { flex: none; width: 12px; height: 12px; border-radius: 50%; background: var(--brand); }
+
+/* Imagem da semana: o mesmo visual do site (papel, serifa nos títulos, turnos em verde-pinho, linhas finas). */
 .wi {
   width: 1080px;
-  padding: 56px 48px 48px;
-  background: #ffffff;
-  color: #111;
+  padding: 52px 48px 48px;
+  background: var(--paper);
+  color: var(--ink);
   font-family: var(--font-sans);
 }
-.wi-header { border-bottom: 6px solid #111; padding-bottom: 16px; margin-bottom: 24px; }
-.wi-title { font-size: 56px; font-weight: 700; margin: 0; line-height: 1.05; }
-.wi-week { margin: 8px 0 0; font: 700 32px var(--font-narrow); letter-spacing: 0.02em; }
+.wi-header { border-bottom: 2px solid var(--ink); padding-bottom: 20px; margin-bottom: 28px; }
+.wi-title { font: 540 60px/1.05 var(--font-serif); letter-spacing: -0.015em; margin: 0; }
+.wi-week { margin: 10px 0 0; font: 400 30px/1.2 var(--font-sans); color: var(--ink-2); }
 .wi-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-.wi-table th, .wi-table td { border: 2px solid #111; padding: 10px 4px; text-align: center; vertical-align: middle; }
-.wi-table thead th { font: 700 26px var(--font-narrow); padding: 12px 4px; background: #111; color: #fff; }
-.wi-table thead th.wi-name { background: #fff; border-color: #fff #111 #111 #fff; }
-.wi-name { width: 22%; text-align: left !important; padding-left: 12px !important; font-size: 26px; font-weight: 800; line-height: 1.1; }
-.wi-name small { display: block; font-size: 18px; font-weight: 500; color: #444; }
-.wi .xp-cell-work .xp-initial { font-size: 34px; line-height: 1; }
-.wi .xp-cell-work .xp-times { font-family: var(--font-mono); font-size: 16px; margin-top: 4px; }
-.wi .xp-cell-work .xp-flex { font-size: 13px; margin-top: 2px; }
-.wi .xp-cell-off { font-size: 34px; background: repeating-linear-gradient(45deg, #fff 0 8px, #d6d6d6 8px 11px); }
-.wi .xp-cell-closed { font-size: 30px; background: #e4e4e4; }
-.wi-gap-row .wi-name { font-size: 20px; font-weight: 700; }
+.wi-table th, .wi-table td { border: 2px solid var(--rule); padding: 12px 4px; text-align: center; vertical-align: middle; background: var(--card); }
+.wi-table thead th { font: 650 24px/1.1 var(--font-sans); padding: 14px 4px; color: var(--ink); border-bottom: 2px solid var(--ink); }
+.wi-table thead th.wi-name { background: transparent; border-color: transparent transparent var(--ink) transparent; }
+.wi-name { width: 22%; text-align: left !important; padding-left: 14px !important; font: 650 26px/1.1 var(--font-sans); }
+.wi-name small { display: block; margin-top: 4px; font: italic 500 20px/1.1 var(--font-serif); color: var(--ink-2); }
+.wi .xp-cell-work .xp-initial {
+  display: inline-grid; place-items: center;
+  min-width: 52px; height: 40px; padding: 0 10px; border-radius: 20px;
+  background: var(--brand); color: #fff;
+  font: 700 23px/1 var(--font-sans);
+}
+.wi .tone-b .xp-initial { background: var(--card); color: var(--brand); box-shadow: inset 0 0 0 3px var(--brand); }
+.wi .tone-c .xp-initial { background: var(--brand-soft); color: var(--brand); }
+.wi .xp-cell-work .xp-times { font-family: var(--font-mono); font-size: 16px; margin-top: 6px; color: var(--ink-2); }
+.wi .xp-cell-work .xp-flex { font-size: 14px; margin-top: 4px; color: var(--ink-2); }
+.wi td.xp-cell-off { background: var(--off); }
+.wi .xp-off { font: italic 500 36px/1 var(--font-serif); color: var(--ink-3); }
+.wi td.xp-cell-closed { background: var(--closed); }
+.wi .xp-closed { font: italic 500 30px/1 var(--font-serif); color: var(--ink-2); }
+.wi .xp-cell-holiday .xp-closed { font-size: 24px; }
+.wi-gap-row .wi-name { font: italic 500 21px/1.15 var(--font-serif); color: #8a3d05; background: var(--gap-soft); }
 .wi .xp-gap { font-size: 17px; line-height: 1.15; word-break: break-word; }
-.wi .xp-gap-missing { border-style: dashed; border-width: 3px; }
-.wi-legend { list-style: none; margin: 24px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 10px 28px; font-size: 22px; }
-.wi-legend .mono { font-family: var(--font-mono); font-size: 19px; }
-.wi .wi-out { color: #777; font-style: italic; }
-.wi-table thead th.wi-out { background: #666; }
-.wi .xp-cell-holiday { font-size: 24px; font-weight: 800; background: repeating-linear-gradient(-45deg, #e4e4e4 0 8px, #fff 8px 13px); }
-.export-scope { margin: 0; }
-.export-scope .seg-btn { font-size: 14px; }
+.wi td.xp-gap-missing { background: var(--gap-soft); color: #8a3d05; }
+.wi .xp-missing { text-transform: none; letter-spacing: 0; font-weight: 700; }
+.wi .xp-coverer { color: var(--brand); }
+.wi .wi-out { opacity: 0.4; }
+.wi-legend { list-style: none; margin: 28px 0 0; padding: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 14px 32px; font-size: 22px; color: var(--ink-2); }
+.wi-legend b { color: var(--ink); }
+.wi-legend .mono { font-family: var(--font-mono); font-size: 18px; }
+.wi-legend .is-off b { font: italic 500 26px/1 var(--font-serif); color: var(--ink-3); }
+
+/* Sigla do turno na legenda das imagens (semana e mês): mesma forma da grade. */
+.wi-legend [class*='tone-'] b, .tc-image .tc-legend [class*='tone-'] b {
+  display: inline-grid; place-items: center; vertical-align: middle;
+  min-width: 40px; height: 32px; padding: 0 8px; margin-right: 4px; border-radius: 16px;
+  background: var(--brand); color: #fff; font-size: 18px;
+}
+.wi-legend .tone-b b, .tc-image .tc-legend .tone-b b { background: var(--card); color: var(--brand); box-shadow: inset 0 0 0 2.5px var(--brand); }
+.wi-legend .tone-c b, .tc-image .tc-legend .tone-c b { background: var(--brand-soft); color: var(--brand); }
 /* Semanas do mês ("26/10 – 01/11") cabem numa linha em 375px. */
 .week-btn { padding: 0 6px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 @media (max-width: 400px) { .week-btn { font-size: 13px; letter-spacing: -0.01em; } }
-.export-format-label { margin: 4px 0 -2px; }

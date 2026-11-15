@@ -69,6 +69,15 @@ export interface LegendItem {
   times: string;
 }
 
+/**
+ * Forma do turno pela posição na legenda (= ordem do cadastro), como na grade do site:
+ * " tone-a" cheio, " tone-b" contorno, " tone-c" claro. Usada na imagem e na impressão.
+ */
+export function toneClass(legend: LegendItem[], initial: string): string {
+  const i = legend.findIndex((l) => l.initial === initial);
+  return ` tone-${'abc'[(i < 0 ? 0 : i) % 3]}`;
+}
+
 export interface ExportModel {
   storeName: string;
   hasSchedule: boolean;

@@ -1,8 +1,8 @@
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { COLUMN_NAMES } from '../../domain/types';
 import { personalCalendarWeeks } from './calendarModel';
-import { IMAGE_WIDTH, usePngFile } from './ImageExport';
+import { IMAGE_WIDTH, ImageActions, usePngFile } from './ImageExport';
 import { DOWNLOADED_NOTICE, shareOrDownload } from './download';
 import type { PersonalDay, PersonalModel } from './personalModel';
 import './personal.css';
@@ -156,7 +156,7 @@ export function PersonalPrintSheet({ models }: { models: PersonalModel[] }) {
 }
 
 /** Imagem da escala individual para o WhatsApp: o PNG é gerado ao escolher a pessoa e compartilhado no toque. */
-export function PersonalImageExport({ model }: { model: PersonalModel }) {
+export function PersonalImageExport({ model, secondary }: { model: PersonalModel; secondary?: ReactNode }) {
   const nodeRef = useRef<HTMLDivElement>(null);
   const { state, retry } = usePngFile(nodeRef, model.fileName, model);
   const [notice, setNotice] = useState<string | null>(null);
@@ -170,25 +170,15 @@ export function PersonalImageExport({ model }: { model: PersonalModel }) {
   };
 
   return (
-    <div className="pp-image-export">
-      <button type="button" className="btn btn-primary" disabled={state.status !== 'ready'} onClick={share}>
-        Imagem para WhatsApp
-      </button>
-      <div className="pp-image-status" aria-live="polite">
-        {state.status === 'pending' && <p className="hint">Preparando a imagem de {model.name}…</p>}
-        {state.status === 'ready' && <p className="hint">Imagem de {model.name} pronta.</p>}
-      </div>
-      {state.status === 'error' && (
-        <div className="pp-image-error">
-          <p role="alert" className="error-text">
-            A imagem de {model.name} não saiu. Tente de novo ou imprima.
-          </p>
-          <button type="button" className="btn" onClick={retry}>
-            Tentar de novo
-          </button>
-        </div>
-      )}
-      {notice && <p className="hint">{notice}</p>}
+    <div className="image-export">
+      <ImageActions
+        state={state}
+        ready={`Imagem de ${model.name} pronta.`}
+        onShare={share}
+        onRetry={retry}
+        secondary={secondary}
+        notice={notice}
+      />
       {createPortal(
         <div className="image-offscreen" aria-hidden="true">
           <div
@@ -198,6 +188,10 @@ export function PersonalImageExport({ model }: { model: PersonalModel }) {
             data-format="calendar"
             style={{ width: IMAGE_WIDTH }}
           >
+            <p className="xi-brand">
+              <span className="xi-dot" />
+              Escala 5x2
+            </p>
             <PersonalCalendarBody model={model} />
           </div>
         </div>,
